@@ -61,11 +61,13 @@ jobs:
       - name: Prepare APK Output
         run: |
           mkdir -p release-output
-          APK_PATH=$(find build/ -name "*release*.apk" | head -n 1)
+          echo "=== All generated APK files ==="
+          find . .. -name "*.apk" -ls || true
+          APK_PATH=$(find . .. /home/runner/work/ -name "*release*.apk" 2>/dev/null | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            APK_PATH=$(find build/ -name "*.apk" | head -n 1)
+            APK_PATH=$(find . .. /home/runner/work/ -name "*.apk" 2>/dev/null | head -n 1)
           fi
-          echo "Found APK at: $APK_PATH"
+          echo "Selected APK: $APK_PATH"
           cp "$APK_PATH" release-output/Edit-Sathi-v1.0.0.apk
           ls -lh release-output/
 

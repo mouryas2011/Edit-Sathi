@@ -11,7 +11,13 @@ android {
     // Dynamically use installed NDK version
     val envSdkDir = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT") ?: ""
     val ndkDir = file("$envSdkDir/ndk")
-    val detectedNdk = if (ndkDir.exists()) ndkDir.listFiles()?.filter { it.isDirectory }?.map { it.name }?.sorted()?.lastOrNull() else null
+    val detectedNdk = if (ndkDir.exists()) {
+        ndkDir.listFiles()
+            ?.filter { it.isDirectory && file("${it.absolutePath}/source.properties").exists() }
+            ?.map { it.name }
+            ?.sorted()
+            ?.lastOrNull()
+    } else null
     ndkVersion = detectedNdk ?: "26.1.10909125"
 
     compileOptions {
