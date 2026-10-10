@@ -7,7 +7,12 @@ plugins {
 android {
     namespace = "com.editsathi.edit_sathi"
     compileSdk = 34
-    ndkVersion = flutter.ndkVersion
+
+    // Dynamically use installed NDK version
+    val envSdkDir = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT") ?: ""
+    val ndkDir = file("$envSdkDir/ndk")
+    val detectedNdk = if (ndkDir.exists()) ndkDir.listFiles()?.filter { it.isDirectory }?.map { it.name }?.sorted()?.lastOrNull() else null
+    ndkVersion = detectedNdk ?: "26.1.10909125"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
