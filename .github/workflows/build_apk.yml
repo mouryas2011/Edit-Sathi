@@ -61,7 +61,12 @@ jobs:
       - name: Prepare APK Output
         run: |
           mkdir -p release-output
-          cp build/app/outputs/flutter-apk/app-release.apk release-output/Edit-Sathi-v1.0.0.apk
+          APK_PATH=$(find build/ -name "*release*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find build/ -name "*.apk" | head -n 1)
+          fi
+          echo "Found APK at: $APK_PATH"
+          cp "$APK_PATH" release-output/Edit-Sathi-v1.0.0.apk
           ls -lh release-output/
 
       - name: Upload APK as Workflow Artifact
