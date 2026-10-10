@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -61,15 +61,34 @@ jobs:
       - name: Prepare APK Output
         run: |
           mkdir -p release-output
-          echo "=== All generated APK files ==="
-          find . .. -name "*.apk" -ls || true
-          APK_PATH=$(find . .. /home/runner/work/ -name "*release*.apk" 2>/dev/null | head -n 1)
-          if [ -z "$APK_PATH" ]; then
-            APK_PATH=$(find . .. /home/runner/work/ -name "*.apk" 2>/dev/null | head -n 1)
+          echo "=== Searching for generated APK ==="
+          ls -la build/app/outputs/flutter-apk/ || true
+
+          APK_PATH=""
+          if [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+            APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+          elif [ -f "build/app/outputs/apk/release/app-release.apk" ]; then
+            APK_PATH="build/app/outputs/apk/release/app-release.apk"
+          else
+            APK_PATH=$(find build/ -type f -name "*release*.apk" 2>/dev/null | head -n 1 || true)
+            if [ -z "$APK_PATH" ]; then
+              APK_PATH=$(find . -type f -name "*.apk" 2>/dev/null | grep -i "release" | head -n 1 || true)
+            fi
+            if [ -z "$APK_PATH" ]; then
+              APK_PATH=$(find . -type f -name "*.apk" 2>/dev/null | head -n 1 || true)
+            fi
           fi
-          echo "Selected APK: $APK_PATH"
+
+          echo "Selected APK path: '$APK_PATH'"
+          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: APK not found! Directory contents:"
+            find . -maxdepth 4 || true
+            exit 1
+          fi
+
           cp "$APK_PATH" release-output/Edit-Sathi-v1.0.0.apk
-          ls -lh release-output/
+          echo "APK successfully prepared:"
+          ls -lh release-output/Edit-Sathi-v1.0.0.apk
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
