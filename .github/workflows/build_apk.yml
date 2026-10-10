@@ -1,0 +1,81 @@
+name: Build Edit Sathi Android APK
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Run Flutter Tests
+        run: flutter test
+
+      - name: Build Release APK
+        run: flutter build apk --release
+
+      - name: Prepare APK Output
+        run: |
+          mkdir -p release-output
+          cp build/app/outputs/flutter-apk/app-release.apk release-output/Edit-Sathi-v1.0.0.apk
+          ls -la release-output/
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Edit-Sathi-v1.0.0-APK
+          path: release-output/Edit-Sathi-v1.0.0.apk
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        with:
+          tag_name: v1.0.0
+          name: "Edit Sathi v1.0.0 Release"
+          body: |
+            ## 🎬 Edit Sathi - Video Editing Application (Android APK)
+
+            ### ✨ Highlights & Features
+            - **Multi-Track Timeline**: Professional multi-layer editing for Video, Audio, and Text tracks
+            - **Real-Time Video Preview Canvas**: Scrubbing, seeking, playhead sync, and aspect ratio switcher (16:9, 9:16, 1:1, 4:5, 21:9)
+            - **Cinematic Color Grading & Filters**: Cinematic, Vintage, Cyberpunk, Black & White, Warm, Cool, Sepia, Vaporwave
+            - **Speed Control & Ramping**: 0.25x to 4x smooth speed adjustment
+            - **Typography & Text Titles**: Styled text overlays with customizable fonts, colors, and alignments
+            - **Export Engine**: 720p HD, 1080p Full HD, and 4K Ultra HD at 30fps/60fps with export progress
+            - **Templates & Project Management**: Pre-built social templates and local auto-save drafts
+
+            ### 📲 How to Install
+            1. Download `Edit-Sathi-v1.0.0.apk` below directly to your Android device.
+            2. Tap the file to install (Enable *"Install from Unknown Sources"* if prompted).
+            3. Open Edit Sathi and start editing videos!
+          files: release-output/Edit-Sathi-v1.0.0.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
