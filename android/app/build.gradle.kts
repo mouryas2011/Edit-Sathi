@@ -18,7 +18,7 @@ android {
             ?.sorted()
             ?.lastOrNull()
     } else null
-    ndkVersion = detectedNdk ?: "26.1.10909125"
+    ndkVersion = detectedNdk ?: "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
