@@ -6,10 +6,12 @@ import '../models/text_overlay.dart';
 import '../models/audio_track.dart';
 import '../models/shape_overlay.dart';
 import '../models/adjustment_layer.dart';
+import '../models/keyframe.dart';
 import '../models/template.dart';
 import '../services/storage_service.dart';
 import '../services/ai_service.dart';
 import '../services/template_service.dart';
+import '../services/thumbnail_service.dart';
 
 class ProjectProvider extends ChangeNotifier {
   static const _uuid = Uuid();
@@ -109,8 +111,29 @@ class ProjectProvider extends ChangeNotifier {
     _projects.insert(0, newProject);
     openProject(newProject);
     StorageService.saveProject(newProject);
+
+    if (initialClips.isNotEmpty && initialClips.first.sourcePath.isNotEmpty && !initialClips.first.sourcePath.startsWith('assets/')) {
+      ThumbnailService.generateVideoThumbnail(initialClips.first.sourcePath).then((thumb) {
+        if (thumb != null) {
+          updateProjectThumbnail(newProject.id, thumb);
+        }
+      });
+    }
+
     notifyListeners();
     return newProject;
+  }
+
+  void updateProjectThumbnail(String projectId, String thumbnailPath) {
+    final idx = _projects.indexWhere((p) => p.id == projectId);
+    if (idx >= 0) {
+      _projects[idx] = _projects[idx].copyWith(customThumbnail: thumbnailPath);
+      if (_activeProject?.id == projectId) {
+        _activeProject = _activeProject!.copyWith(customThumbnail: thumbnailPath);
+      }
+      StorageService.saveProject(_projects[idx]);
+      notifyListeners();
+    }
   }
 
   ProjectModel createFromTemplate(VideoTemplateModel template) {
@@ -258,6 +281,121 @@ class ProjectProvider extends ChangeNotifier {
     if (index < 0) return;
     final clip = _activeProject!.videoClips[index];
     updateVideoClip(clip.copyWith(filter: filter));
+  }
+
+  void updateClipTransition(String clipId, TransitionType transition, {Duration? duration}) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+    final clip = _activeProject!.videoClips[index];
+    updateVideoClip(clip.copyWith(
+      transition: transition,
+      transitionDuration: duration ?? clip.transitionDuration,
+    ));
+  }
+
+  void applyTransitionToAllClips(TransitionType transition, {Duration? duration}) {
+    if (_activeProject == null) return;
+    _pushHistory();
+
+    final dur = duration ?? const Duration(milliseconds: 500);
+    final updatedClips = _activeProject!.videoClips.map((c) {
+      return c.copyWith(
+        transition: transition,
+        transitionDuration: dur,
+      );
+    }).toList();
+
+    _activeProject = _activeProject!.copyWith(
+      videoClips: updatedClips,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void updateClipSpeedCurve(String clipId, SpeedCurveType curve) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+    final clip = _activeProject!.videoClips[index];
+    updateVideoClip(clip.copyWith(speedCurve: curve));
+  }
+
+  void addOrUpdateKeyframe(String clipId, KeyframeModel keyframe) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+    _pushHistory();
+
+    final clip = _activeProject!.videoClips[index];
+    final keyframes = List<KeyframeModel>.from(clip.keyframes);
+    
+    // Check if keyframe exists near this timestamp (within 60ms)
+    final existingIndex = keyframes.indexWhere((k) => 
+      (k.timeOffset - keyframe.timeOffset).inMilliseconds.abs() < 60);
+
+    if (existingIndex >= 0) {
+      keyframes[existingIndex] = keyframe;
+    } else {
+      keyframes.add(keyframe);
+    }
+    keyframes.sort((a, b) => a.timeOffset.compareTo(b.timeOffset));
+
+    updateVideoClip(clip.copyWith(keyframes: keyframes));
+  }
+
+  void removeKeyframe(String clipId, String keyframeId) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+    _pushHistory();
+
+    final clip = _activeProject!.videoClips[index];
+    final keyframes = clip.keyframes.where((k) => k.id != keyframeId).toList();
+    updateVideoClip(clip.copyWith(keyframes: keyframes));
+  }
+
+  void removeKeyframeAtOffset(String clipId, Duration offset) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+    _pushHistory();
+
+    final clip = _activeProject!.videoClips[index];
+    final keyframes = clip.keyframes.where((k) => 
+      (k.timeOffset - offset).inMilliseconds.abs() >= 100).toList();
+    updateVideoClip(clip.copyWith(keyframes: keyframes));
+  }
+
+  /// Premiere Pro style Ripple Delete: deletes clip and slides subsequent clips back
+  void rippleDeleteClip(String clipId) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+    _pushHistory();
+
+    final targetClip = _activeProject!.videoClips[index];
+    final targetTrack = targetClip.trackIndex;
+    final deletedDuration = targetClip.duration;
+    final targetStart = targetClip.startTime;
+
+    final updatedClips = <VideoClipModel>[];
+    for (final c in _activeProject!.videoClips) {
+      if (c.id == clipId) continue;
+      if (c.trackIndex == targetTrack && c.startTime > targetStart) {
+        // Shift earlier by deleted duration
+        final newStart = c.startTime - deletedDuration;
+        updatedClips.add(c.copyWith(startTime: newStart < Duration.zero ? Duration.zero : newStart));
+      } else {
+        updatedClips.add(c);
+      }
+    }
+
+    _activeProject = _activeProject!.copyWith(
+      videoClips: updatedClips,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
   }
 
   void removeVideoClip(String clipId) {
@@ -1176,6 +1314,55 @@ class ProjectProvider extends ChangeNotifier {
     final audios = _activeProject!.audioTracks.where((a) => a.id != id).toList();
     _activeProject = _activeProject!.copyWith(
       audioTracks: audios,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void updateAudioStudio(
+    String audioId, {
+    double? volume,
+    Duration? fadeIn,
+    Duration? fadeOut,
+    VoiceEffectPreset? effect,
+  }) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.audioTracks.indexWhere((a) => a.id == audioId);
+    if (index < 0) return;
+    _pushHistory();
+
+    final audio = _activeProject!.audioTracks[index];
+    final updated = audio.copyWith(
+      volume: volume ?? audio.volume,
+      fadeInDuration: fadeIn ?? audio.fadeInDuration,
+      fadeOutDuration: fadeOut ?? audio.fadeOutDuration,
+      voiceEffect: effect ?? audio.voiceEffect,
+    );
+
+    final audios = List<AudioTrackModel>.from(_activeProject!.audioTracks);
+    audios[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(
+      audioTracks: audios,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void updateCanvasBackground({
+    required CanvasBgType bgType,
+    int? colorValue,
+    int? gradientIndex,
+    double? blurSigma,
+  }) {
+    if (_activeProject == null) return;
+    _pushHistory();
+
+    _activeProject = _activeProject!.copyWith(
+      canvasBgType: bgType,
+      canvasColorValue: colorValue ?? _activeProject!.canvasColorValue,
+      canvasGradientIndex: gradientIndex ?? _activeProject!.canvasGradientIndex,
+      canvasBlurSigma: blurSigma ?? _activeProject!.canvasBlurSigma,
       updatedAt: DateTime.now(),
     );
     _saveAndNotify();

@@ -13,6 +13,8 @@ import 'sheets/ai_tools_sheet.dart';
 import 'sheets/transform_sheet.dart';
 import 'sheets/shape_picker_sheet.dart';
 import 'sheets/adjustment_layer_sheet.dart';
+import 'sheets/transition_sheet.dart';
+import 'sheets/canvas_background_sheet.dart';
 import '../../../../services/ai_service.dart';
 
 class EditorBottomToolbar extends StatelessWidget {
@@ -106,10 +108,32 @@ class EditorBottomToolbar extends StatelessWidget {
                       SpeedSheet.show(
                         context: context,
                         currentSpeed: activeClip.speed,
-                        onSpeedSelected: (speed) {
+                        currentCurve: activeClip.speedCurve,
+                        onSpeedSelected: (speed, curve) {
                           projectProvider.updateVideoClip(
-                            activeClip.copyWith(speed: speed),
+                            activeClip.copyWith(speed: speed, speedCurve: curve),
                           );
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  _ToolActionButton(
+                    icon: Icons.auto_awesome_rounded,
+                    label: 'Transition',
+                    color: const Color(0xFFF43F5E),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      TransitionSheet.show(
+                        context: context,
+                        currentTransition: activeClip.transition,
+                        currentDuration: activeClip.transitionDuration,
+                        onApply: (trans, dur, applyToAll) {
+                          if (applyToAll) {
+                            projectProvider.applyTransitionToAllClips(trans, duration: dur);
+                          } else {
+                            projectProvider.updateClipTransition(activeClip.id, trans, duration: dur);
+                          }
                         },
                       );
                     },
@@ -124,6 +148,16 @@ class EditorBottomToolbar extends StatelessWidget {
                       projectProvider.updateVideoClip(
                         activeClip.copyWith(isMuted: !activeClip.isMuted),
                       );
+                      Navigator.of(ctx).pop();
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  _ToolActionButton(
+                    icon: Icons.delete_sweep_rounded,
+                    label: 'Ripple Del',
+                    color: Colors.amberAccent,
+                    onTap: () {
+                      projectProvider.rippleDeleteClip(activeClip.id);
                       Navigator.of(ctx).pop();
                     },
                   ),
@@ -356,6 +390,52 @@ class EditorBottomToolbar extends StatelessWidget {
                     context: context,
                     currentRatio: project.aspectRatio,
                     onRatioSelected: projectProvider.updateAspectRatio,
+                  );
+                }
+              },
+            ),
+
+            // 11. Transitions (Premiere Pro / CapCut)
+            _ToolbarItem(
+              icon: Icons.auto_awesome_rounded,
+              label: 'Transition',
+              onTap: () {
+                if (project == null || project.videoClips.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Add video clips first to apply transitions')),
+                  );
+                  return;
+                }
+                final playhead = timelineProvider.currentPosition;
+                final activeClip = project.videoClips.cast<dynamic>().firstWhere(
+                  (c) => playhead >= c.startTime && playhead <= c.endTime,
+                  orElse: () => project.videoClips.first,
+                );
+                TransitionSheet.show(
+                  context: context,
+                  currentTransition: activeClip.transition,
+                  currentDuration: activeClip.transitionDuration,
+                  onApply: (trans, dur, applyToAll) {
+                    if (applyToAll) {
+                      projectProvider.applyTransitionToAllClips(trans, duration: dur);
+                    } else {
+                      projectProvider.updateClipTransition(activeClip.id, trans, duration: dur);
+                    }
+                  },
+                );
+              },
+            ),
+
+            // 12. Canvas Background (CapCut / VN style blur, color, gradient)
+            _ToolbarItem(
+              icon: Icons.palette_rounded,
+              label: 'Canvas BG',
+              onTap: () {
+                if (project != null) {
+                  CanvasBackgroundSheet.show(
+                    context: context,
+                    project: project,
+                    onSave: projectProvider.updateCanvasBackground,
                   );
                 }
               },

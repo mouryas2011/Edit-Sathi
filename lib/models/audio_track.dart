@@ -1,7 +1,24 @@
+import 'package:flutter/material.dart';
+
 enum AudioTrackType {
   music,
   voiceover,
   soundEffect,
+}
+
+enum VoiceEffectPreset {
+  none('Original', Icons.mic_none_rounded),
+  bassBoost('Bass Boost', Icons.speaker_group_rounded),
+  crispVocal('Crisp Vocal', Icons.graphic_eq_rounded),
+  echoReverb('Echo Reverb', Icons.surround_sound_rounded),
+  telephone('Telephone', Icons.phone_in_talk_rounded),
+  robot('Robot', Icons.smart_toy_rounded),
+  deepVoice('Deep Voice', Icons.record_voice_over_rounded),
+  chipmunk('Chipmunk', Icons.sentiment_very_satisfied_rounded);
+
+  final String label;
+  final IconData icon;
+  const VoiceEffectPreset(this.label, this.icon);
 }
 
 class AudioTrackModel {
@@ -13,10 +30,13 @@ class AudioTrackModel {
   final Duration startTime;
   final Duration duration;
   final Duration trimStart;
-  final double volume; // 0.0 - 1.0
+  final double volume; // 0.0 - 2.0 (boost up to 200%)
   final bool isMuted;
   final List<double> waveformData;
   final int trackIndex; // 0 for A1, 1 for A2, 2 for A3...
+  final Duration fadeInDuration;
+  final Duration fadeOutDuration;
+  final VoiceEffectPreset voiceEffect;
 
   const AudioTrackModel({
     required this.id,
@@ -31,6 +51,9 @@ class AudioTrackModel {
     this.isMuted = false,
     this.waveformData = const [],
     this.trackIndex = 0,
+    this.fadeInDuration = Duration.zero,
+    this.fadeOutDuration = Duration.zero,
+    this.voiceEffect = VoiceEffectPreset.none,
   });
 
   Duration get endTime => startTime + duration;
@@ -48,6 +71,9 @@ class AudioTrackModel {
     bool? isMuted,
     List<double>? waveformData,
     int? trackIndex,
+    Duration? fadeInDuration,
+    Duration? fadeOutDuration,
+    VoiceEffectPreset? voiceEffect,
   }) {
     return AudioTrackModel(
       id: id ?? this.id,
@@ -62,6 +88,9 @@ class AudioTrackModel {
       isMuted: isMuted ?? this.isMuted,
       waveformData: waveformData ?? this.waveformData,
       trackIndex: trackIndex ?? this.trackIndex,
+      fadeInDuration: fadeInDuration ?? this.fadeInDuration,
+      fadeOutDuration: fadeOutDuration ?? this.fadeOutDuration,
+      voiceEffect: voiceEffect ?? this.voiceEffect,
     );
   }
 
@@ -79,6 +108,9 @@ class AudioTrackModel {
       'isMuted': isMuted,
       'waveformData': waveformData,
       'trackIndex': trackIndex,
+      'fadeInDurationMs': fadeInDuration.inMilliseconds,
+      'fadeOutDurationMs': fadeOutDuration.inMilliseconds,
+      'voiceEffect': voiceEffect.name,
     };
   }
 
@@ -102,6 +134,16 @@ class AudioTrackModel {
               .toList() ??
           [],
       trackIndex: json['trackIndex'] as int? ?? 0,
+      fadeInDuration: Duration(
+        milliseconds: json['fadeInDurationMs'] as int? ?? 0,
+      ),
+      fadeOutDuration: Duration(
+        milliseconds: json['fadeOutDurationMs'] as int? ?? 0,
+      ),
+      voiceEffect: VoiceEffectPreset.values.firstWhere(
+        (e) => e.name == json['voiceEffect'],
+        orElse: () => VoiceEffectPreset.none,
+      ),
     );
   }
 }

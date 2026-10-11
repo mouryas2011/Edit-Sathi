@@ -28,6 +28,16 @@ enum ResolutionPreset {
   const ResolutionPreset(this.label, this.width, this.height);
 }
 
+enum CanvasBgType {
+  blur('Blur Fill', 'Soft blurred background from current video clip'),
+  color('Solid Color', 'Studio solid color backdrop'),
+  gradient('Gradient', 'Modern aesthetic gradient backdrop');
+
+  final String label;
+  final String description;
+  const CanvasBgType(this.label, this.description);
+}
+
 class ProjectModel {
   final String id;
   final String title;
@@ -50,6 +60,10 @@ class ProjectModel {
   final List<int> lockedVideoTracks;
   final List<int> mutedAudioTracks;
   final List<int> lockedAudioTracks;
+  final CanvasBgType canvasBgType;
+  final int canvasColorValue;
+  final int canvasGradientIndex;
+  final double canvasBlurSigma;
 
   const ProjectModel({
     required this.id,
@@ -73,6 +87,10 @@ class ProjectModel {
     this.lockedVideoTracks = const [],
     this.mutedAudioTracks = const [],
     this.lockedAudioTracks = const [],
+    this.canvasBgType = CanvasBgType.blur,
+    this.canvasColorValue = 0xFF0B0F19,
+    this.canvasGradientIndex = 0,
+    this.canvasBlurSigma = 12.0,
   });
 
   /// Computes the total timeline length based on all tracks.
@@ -137,6 +155,10 @@ class ProjectModel {
     List<int>? lockedVideoTracks,
     List<int>? mutedAudioTracks,
     List<int>? lockedAudioTracks,
+    CanvasBgType? canvasBgType,
+    int? canvasColorValue,
+    int? canvasGradientIndex,
+    double? canvasBlurSigma,
   }) {
     return ProjectModel(
       id: id ?? this.id,
@@ -160,6 +182,10 @@ class ProjectModel {
       lockedVideoTracks: lockedVideoTracks ?? this.lockedVideoTracks,
       mutedAudioTracks: mutedAudioTracks ?? this.mutedAudioTracks,
       lockedAudioTracks: lockedAudioTracks ?? this.lockedAudioTracks,
+      canvasBgType: canvasBgType ?? this.canvasBgType,
+      canvasColorValue: canvasColorValue ?? this.canvasColorValue,
+      canvasGradientIndex: canvasGradientIndex ?? this.canvasGradientIndex,
+      canvasBlurSigma: canvasBlurSigma ?? this.canvasBlurSigma,
     );
   }
 
@@ -186,6 +212,10 @@ class ProjectModel {
       'lockedVideoTracks': lockedVideoTracks,
       'mutedAudioTracks': mutedAudioTracks,
       'lockedAudioTracks': lockedAudioTracks,
+      'canvasBgType': canvasBgType.name,
+      'canvasColorValue': canvasColorValue,
+      'canvasGradientIndex': canvasGradientIndex,
+      'canvasBlurSigma': canvasBlurSigma,
     };
   }
 
@@ -238,6 +268,13 @@ class ProjectModel {
       lockedVideoTracks: (json['lockedVideoTracks'] as List<dynamic>?)?.map((e) => e as int).toList() ?? const [],
       mutedAudioTracks: (json['mutedAudioTracks'] as List<dynamic>?)?.map((e) => e as int).toList() ?? const [],
       lockedAudioTracks: (json['lockedAudioTracks'] as List<dynamic>?)?.map((e) => e as int).toList() ?? const [],
+      canvasBgType: CanvasBgType.values.firstWhere(
+        (e) => e.name == json['canvasBgType'],
+        orElse: () => CanvasBgType.blur,
+      ),
+      canvasColorValue: json['canvasColorValue'] as int? ?? 0xFF0B0F19,
+      canvasGradientIndex: json['canvasGradientIndex'] as int? ?? 0,
+      canvasBlurSigma: (json['canvasBlurSigma'] as num?)?.toDouble() ?? 12.0,
     );
   }
 }

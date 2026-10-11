@@ -78,7 +78,7 @@ jobs:
             exit 1
           fi
 
-          cp "$APK_PATH" release-output/Edit-Sathi-v1.0.3.apk
+          cp "$APK_PATH" release-output/Edit-Sathi-v1.0.4.apk
           cp "$APK_PATH" release-output/Edit-Sathi-release.apk
           echo "APKs successfully prepared:"
           ls -lh release-output/
@@ -86,49 +86,68 @@ jobs:
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Edit-Sathi-v1.0.3-APK
-          path: release-output/Edit-Sathi-v1.0.3.apk
+          name: Edit-Sathi-v1.0.4-APK
+          path: release-output/Edit-Sathi-v1.0.4.apk
           retention-days: 30
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         with:
-          tag_name: v1.0.3
-          name: "Edit Sathi v1.0.3 - Touch Transformation, Shapes & Adjustment Layers"
+          tag_name: v1.0.4
+          name: "Edit Sathi v1.0.4 - Premiere Pro, VN & CapCut Pro Suite + Live Video Thumbnails"
           body: |
-            ## 🎬 Edit Sathi - Video Editing Application (Android APK v1.0.3)
+            ## 🎬 Edit Sathi - Video Editing Application (Android APK v1.0.4)
 
-            ### 🚀 What's New in v1.0.3
-            - **👌 Interactive Touch Transformations (Zoom, Rotate & Scale)**:
-              - **Touch-to-Zoom**: Pinch on the video canvas to scale clips dynamically from 20% to 500%.
-              - **Two-Finger Rotate**: Twist with two fingers to rotate video clips in real-time.
-              - **Drag-to-Pan**: Drag anywhere on screen to reposition the active video.
-              - **Cyan Transform Gizmo**: Interactive bounding box with 4 corner anchors, top rotation stalk, and floating quick controls (Scale %, Rotation °, Flip H, Flip V, Reset, and Tune).
-              - **Fine-Tune Transform Sheet**: Precise sliders for scale, rotation angle wheel, X/Y offsets, preset aspect scales (Fit, Fill, 1.25x, 1.5x, 2x), and one-tap reset.
-            - **🔷 Graphic Shape Overlays**:
-              - 8 vector shapes: Rectangle, Rounded Box, Circle, Arrow, Star, Heart, Callout Bubble, and Divider Line.
-              - Color palette, border stroke color, stroke width, opacity, corner radius, and duration controls.
-              - Draggable directly on canvas to reposition, with dedicated **SHP** timeline lane to trim and edit.
-            - **🎚️ Adobe Premiere Pro Style Adjustment Layers**:
-              - Non-destructive color grading layer that affects all clips underneath across the timeline.
-              - Real-time 5x4 color matrix engine adjusting brightness, contrast, saturation, opacity, and preset LUTs (Cinematic, Warm Sunset, Cool Blue, Retro Vintage, Black & White, Vivid Pop).
-              - Dedicated **ADJ** timeline lane and amber indicator pill on canvas for instant live adjustments.
-            - **🖐️ CapCut & VN Style Interactive Timeline**:
-              - **Touch & Drag-to-Move**: Touch any media clip on the timeline to slide and reposition horizontally with magnetic snapping to 0:00 and playhead.
-              - **Left & Right Trim Handles**: Selected clips feature tactile trim grip handles to adjust in-points and out-points interactively.
-              - **Contextual Clip Action Bar**: Pinned quick toolbar appears on selection for instant Split, Transform, Speed, Filter, Duplicate, and Delete.
-              - Universal support across Video, Audio, Text, Shapes, and Adjustment Layers.
-            - **⚡ Performance & Stability**:
-              - 100% on-device processing, zero cloud dependencies.
-              - Smooth 60fps gesture handling and Exoplayer playback sync.
+            ### 🚀 What's New in v1.0.4
+
+            - **🖼️ Real Video Thumbnails on Home & Projects Screen**:
+              - Native Android `MediaMetadataRetriever` extraction on a background thread with JPEG disk caching.
+              - Live video frame preview on project cards with duration badges, aspect badges, and play buttons.
+              - Fallback graceful gradient placeholders when media is loading.
+
+            - **✨ Premiere Pro & CapCut Video Transitions**:
+              - 10+ professional transitions: Cross Dissolve, Dip to Black, Dip to White, Wipe Left, Wipe Right, Slide Left, Slide Right, Zoom In, Zoom Out, and Glitch Flash.
+              - Transition duration control (0.2s to 2.0s).
+              - **Apply to All Clips** one-tap button for whole-timeline continuity.
+              - Interactive transition badges `|⧗|` on timeline tracks to edit transitions with a single tap.
+
+            - **⚡ CapCut & VN Speed Curve Ramping**:
+              - Standard speed controls from 0.1x to 10.0x with smooth decimal precision and quick presets.
+              - Speed Curve Ramping with real-time Bezier visual graph:
+                - **Montage**: Dynamic rhythm with high-speed burst.
+                - **Hero**: Dramatic slow-motion focus center.
+                - **Bullet Time**: Rapid entry and exit with ultra slow-mo centerpiece.
+                - **Jump Cut**: Alternating bursts for beat matching.
+                - **Flash In / Flash Out**: Acceleration and deceleration ramps.
+
+            - **◆ Keyframe Animation (Motion Graphics)**:
+              - Place diamond keyframe markers `◆` on timeline clips at any playhead timestamp.
+              - Smooth cubic/linear interpolation for scale, rotation, X/Y translation, and opacity during playback.
+              - Add/Remove keyframe buttons on the contextual clip action bar.
+
+            - **🎙️ Audio Studio & Voice Effects**:
+              - Volume boost slider up to 200%.
+              - Tactile Fade-In and Fade-Out duration sliders (0.0s to 5.0s).
+              - 8 Voice Effects & Audio FX presets: Original, Bass Boost, Crisp Vocal, Echo/Reverb, Telephone, Robot, Deep Voice, and Chipmunk.
+
+            - **🎨 Studio Canvas Background (Blur Fill, Colors & Gradients)**:
+              - **Blur Fill**: Fills canvas margins with a soft blurred copy of the video (Soft, Medium, Heavy blur sigma).
+              - **Solid Color**: Studio color palette (Pitch Black, Slate, Charcoal, Indigo, Purple, Emerald, Crimson, Pure White).
+              - **Gradient**: Modern aesthetic gradients (Sunset, Cyber Neon, Deep Ocean, Purple Haze, Midnight Gold).
+
+            - **✂️ Smart Ripple Delete**:
+              - Premiere Pro style ripple delete automatically removes clip and shifts subsequent clips on the track to eliminate empty gaps.
+
+            - **⚡ Performance & 100% On-Device Processing**:
+              - Zero cloud dependencies, complete privacy, and zero subscription costs.
 
             ### 📲 How to Install
-            1. Download `Edit-Sathi-v1.0.3.apk` below directly to your Android device.
+            1. Download `Edit-Sathi-v1.0.4.apk` below directly to your Android device.
             2. Tap the file to install (Enable *"Install from Unknown Sources"* if prompted).
-            3. Open Edit Sathi and start editing!
+            3. Open Edit Sathi and start editing like a pro!
           files: |
-            release-output/Edit-Sathi-v1.0.3.apk
+            release-output/Edit-Sathi-v1.0.4.apk
             release-output/Edit-Sathi-release.apk
           draft: false
           prerelease: false

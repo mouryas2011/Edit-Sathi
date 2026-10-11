@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:path_provider/path_provider.dart';
+import '../../../../models/project.dart';
 import '../../../../models/video_clip.dart';
 import '../../../../models/shape_overlay.dart';
 import '../../../../models/adjustment_layer.dart';
@@ -343,6 +345,7 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
                     colorFilter,
                     adjFilter,
                     project.aspectRatio.ratio,
+                    context.read<TimelineProvider>().currentPosition,
                   )
                 else
                   _buildFallbackVisual(project, activeClip, colorFilter, adjFilter),
@@ -362,17 +365,142 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
     );
   }
 
+  Widget _buildCanvasBackground(ProjectModel project, VideoPlayerController? controller) {
+    switch (project.canvasBgType) {
+      case CanvasBgType.blur:
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(color: const Color(0xFF0B0F19)),
+            if (controller != null && controller.value.isInitialized)
+              ClipRect(
+                child: ImageFiltered(
+                  imageFilter: ui.ImageFilter.blur(
+                    sigmaX: project.canvasBlurSigma,
+                    sigmaY: project.canvasBlurSigma,
+                  ),
+                  child: Transform.scale(
+                    scale: 1.35,
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: controller.value.aspectRatio,
+                        child: VideoPlayer(controller),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(0.0, -0.2),
+                    radius: 1.2,
+                    colors: [Color(0xFF1E293B), Color(0xFF0B0F19)],
+                  ),
+                ),
+              ),
+            Container(color: Colors.black.withValues(alpha: 0.28)),
+          ],
+        );
+
+      case CanvasBgType.color:
+        return Container(color: Color(project.canvasColorValue));
+
+      case CanvasBgType.gradient:
+        const presets = [
+          [Color(0xFF0F172A), Color(0xFF1E293B)],
+          [Color(0xFF31103F), Color(0xFF701A75)],
+          [Color(0xFF1E1B4B), Color(0xFF3B82F6)],
+          [Color(0xFF064E3B), Color(0xFF10B981)],
+          [Color(0xFF7F1D1D), Color(0xFFF97316)],
+          [Color(0xFF111827), Color(0xFF6366F1)],
+        ];
+        final grad = presets[project.canvasGradientIndex.clamp(0, presets.length - 1)];
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: grad,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        );
+    }
+  }
+
   Widget _buildTransformedVideoWidget(
     VideoPlayerController controller,
     VideoClipModel? clip,
     ColorFilter? baseFilter,
     ColorFilter? adjFilter,
     double canvasAspectRatio,
+    Duration currentPos,
   ) {
-    final scale = clip?.scale ?? 1.0;
-    final rotation = clip?.rotation ?? 0.0;
+    final localOffset = clip != null && currentPos >= clip.startTime
+        ? currentPos - clip.startTime
+        : Duration.zero;
+
+    final kfTransform = clip?.getTransformAt(localOffset);
+    double scale = kfTransform?.scale ?? clip?.scale ?? 1.0;
+    double rotation = kfTransform?.rotation ?? clip?.rotation ?? 0.0;
+    double posX = kfTransform?.positionX ?? clip?.positionX ?? 0.0;
+    double posY = kfTransform?.positionY ?? clip?.positionY ?? 0.0;
+    double opacity = kfTransform?.opacity ?? 1.0;
     final flipH = clip?.flipHorizontal == true ? -1.0 : 1.0;
     final flipV = clip?.flipVertical == true ? -1.0 : 1.0;
+
+    double slideDx = 0.0;
+    double slideDy = 0.0;
+    double overlayBlack = 0.0;
+    double overlayWhite = 0.0;
+
+    // Apply Transition Effects (Premiere Pro, VN, CapCut)
+    if (clip != null &&
+        clip.transition != TransitionType.none &&
+        localOffset < clip.transitionDuration) {
+      final t = (localOffset.inMilliseconds / clip.transitionDuration.inMilliseconds)
+          .clamp(0.0, 1.0);
+
+      switch (clip.transition) {
+        case TransitionType.crossFade:
+          opacity *= t;
+          break;
+        case TransitionType.dipToBlack:
+        case TransitionType.fadeToBlack:
+          overlayBlack = (1.0 - t).clamp(0.0, 1.0);
+          break;
+        case TransitionType.dipToWhite:
+          overlayWhite = (1.0 - t).clamp(0.0, 1.0);
+          break;
+        case TransitionType.wipeLeft:
+        case TransitionType.slideLeft:
+          slideDx = (1.0 - t) * 1.0;
+          break;
+        case TransitionType.wipeRight:
+        case TransitionType.slideRight:
+          slideDx = -(1.0 - t) * 1.0;
+          break;
+        case TransitionType.zoomIn:
+          scale *= (0.3 + 0.7 * t);
+          opacity *= t;
+          break;
+        case TransitionType.zoomOut:
+          scale *= (1.8 - 0.8 * t);
+          opacity *= t;
+          break;
+        case TransitionType.glitch:
+          if ((localOffset.inMilliseconds / 80).floor() % 2 == 0) {
+            slideDx = 0.04;
+            opacity *= 0.85;
+          } else {
+            slideDx = -0.04;
+          }
+          break;
+        case TransitionType.none:
+          break;
+      }
+    }
 
     Widget content = Center(
       child: AspectRatio(
@@ -392,10 +520,10 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final tx = (clip?.positionX ?? 0.0) * (constraints.maxWidth / 2);
-        final ty = (clip?.positionY ?? 0.0) * (constraints.maxHeight / 2);
+        final tx = (posX + slideDx) * (constraints.maxWidth / 2);
+        final ty = (posY + slideDy) * (constraints.maxHeight / 2);
 
-        return Transform(
+        Widget result = Transform(
           alignment: Alignment.center,
           transform: Matrix4.identity()
             // ignore: deprecated_member_use
@@ -403,8 +531,39 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
             ..rotateZ(rotation)
             // ignore: deprecated_member_use
             ..scale(scale * flipH, scale * flipV),
-          child: content,
+          child: Opacity(
+            opacity: opacity.clamp(0.0, 1.0),
+            child: content,
+          ),
         );
+
+        if (overlayBlack > 0.0) {
+          result = Stack(
+            fit: StackFit.expand,
+            children: [
+              result,
+              IgnorePointer(
+                child: Container(
+                  color: Colors.black.withValues(alpha: overlayBlack),
+                ),
+              ),
+            ],
+          );
+        } else if (overlayWhite > 0.0) {
+          result = Stack(
+            fit: StackFit.expand,
+            children: [
+              result,
+              IgnorePointer(
+                child: Container(
+                  color: Colors.white.withValues(alpha: overlayWhite),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return result;
       },
     );
   }
@@ -556,6 +715,9 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
+                    // 0. Studio Canvas Background (Blur Fill / Solid Color / Gradient)
+                    _buildCanvasBackground(project, _controller),
+
                     // 1. Video Layer (Interactive Transformed Video + Live Color Filter & Adjustment Layer)
                     if (hasValidRealPlayer)
                       _buildTransformedVideoWidget(
@@ -564,6 +726,7 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
                         colorFilter,
                         adjFilter,
                         project.aspectRatio.ratio,
+                        currentPos,
                       )
                     else if (_isControllerInitializing)
                       Container(
@@ -601,6 +764,7 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
                         colorFilter,
                         adjFilter,
                         constraints,
+                        currentPos,
                       ),
 
                     // 2. Interactive Cyan Bounding Box Gizmo for active clip
@@ -1082,15 +1246,76 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
     ColorFilter? colorFilter,
     ColorFilter? adjFilter,
     BoxConstraints constraints,
+    Duration currentPos,
   ) {
-    final scale = activeClip?.scale ?? 1.0;
-    final rotation = activeClip?.rotation ?? 0.0;
+    final localOffset = activeClip != null && currentPos >= activeClip.startTime
+        ? currentPos - activeClip.startTime
+        : Duration.zero;
+
+    final kfTransform = activeClip?.getTransformAt(localOffset);
+    double scale = kfTransform?.scale ?? activeClip?.scale ?? 1.0;
+    double rotation = kfTransform?.rotation ?? activeClip?.rotation ?? 0.0;
+    double posX = kfTransform?.positionX ?? activeClip?.positionX ?? 0.0;
+    double posY = kfTransform?.positionY ?? activeClip?.positionY ?? 0.0;
+    double opacity = kfTransform?.opacity ?? 1.0;
     final flipH = activeClip?.flipHorizontal == true ? -1.0 : 1.0;
     final flipV = activeClip?.flipVertical == true ? -1.0 : 1.0;
-    final tx = (activeClip?.positionX ?? 0.0) * (constraints.maxWidth / 2);
-    final ty = (activeClip?.positionY ?? 0.0) * (constraints.maxHeight / 2);
 
-    return Transform(
+    double slideDx = 0.0;
+    double slideDy = 0.0;
+    double overlayBlack = 0.0;
+    double overlayWhite = 0.0;
+
+    if (activeClip != null &&
+        activeClip.transition != TransitionType.none &&
+        localOffset < activeClip.transitionDuration) {
+      final t = (localOffset.inMilliseconds / activeClip.transitionDuration.inMilliseconds)
+          .clamp(0.0, 1.0);
+
+      switch (activeClip.transition) {
+        case TransitionType.crossFade:
+          opacity *= t;
+          break;
+        case TransitionType.dipToBlack:
+        case TransitionType.fadeToBlack:
+          overlayBlack = (1.0 - t).clamp(0.0, 1.0);
+          break;
+        case TransitionType.dipToWhite:
+          overlayWhite = (1.0 - t).clamp(0.0, 1.0);
+          break;
+        case TransitionType.wipeLeft:
+        case TransitionType.slideLeft:
+          slideDx = (1.0 - t) * 1.0;
+          break;
+        case TransitionType.wipeRight:
+        case TransitionType.slideRight:
+          slideDx = -(1.0 - t) * 1.0;
+          break;
+        case TransitionType.zoomIn:
+          scale *= (0.3 + 0.7 * t);
+          opacity *= t;
+          break;
+        case TransitionType.zoomOut:
+          scale *= (1.8 - 0.8 * t);
+          opacity *= t;
+          break;
+        case TransitionType.glitch:
+          if ((localOffset.inMilliseconds / 80).floor() % 2 == 0) {
+            slideDx = 0.04;
+            opacity *= 0.85;
+          } else {
+            slideDx = -0.04;
+          }
+          break;
+        case TransitionType.none:
+          break;
+      }
+    }
+
+    final tx = (posX + slideDx) * (constraints.maxWidth / 2);
+    final ty = (posY + slideDy) * (constraints.maxHeight / 2);
+
+    Widget result = Transform(
       alignment: Alignment.center,
       transform: Matrix4.identity()
         // ignore: deprecated_member_use
@@ -1098,8 +1323,39 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
         ..rotateZ(rotation)
         // ignore: deprecated_member_use
         ..scale(scale * flipH, scale * flipV),
-      child: _buildFallbackVisual(project, activeClip, colorFilter, adjFilter),
+      child: Opacity(
+        opacity: opacity.clamp(0.0, 1.0),
+        child: _buildFallbackVisual(project, activeClip, colorFilter, adjFilter),
+      ),
     );
+
+    if (overlayBlack > 0.0) {
+      result = Stack(
+        fit: StackFit.expand,
+        children: [
+          result,
+          IgnorePointer(
+            child: Container(
+              color: Colors.black.withValues(alpha: overlayBlack),
+            ),
+          ),
+        ],
+      );
+    } else if (overlayWhite > 0.0) {
+      result = Stack(
+        fit: StackFit.expand,
+        children: [
+          result,
+          IgnorePointer(
+            child: Container(
+              color: Colors.white.withValues(alpha: overlayWhite),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return result;
   }
 
   Widget _buildFallbackVisual(

@@ -6,6 +6,7 @@ import 'package:edit_sathi/models/text_overlay.dart';
 import 'package:edit_sathi/models/audio_track.dart';
 import 'package:edit_sathi/models/shape_overlay.dart';
 import 'package:edit_sathi/models/adjustment_layer.dart';
+import 'package:edit_sathi/models/keyframe.dart';
 import 'package:edit_sathi/providers/timeline_provider.dart';
 import 'package:edit_sathi/providers/project_provider.dart';
 import 'package:edit_sathi/services/export_service.dart';
@@ -616,6 +617,277 @@ void main() {
 
       provider.duplicateAdjustmentLayer('adj-touch-1');
       expect(provider.activeProject!.adjustmentLayers.length, 2);
+    });
+
+    test('Premiere Pro & CapCut transitions engine and apply-to-all functionality', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(
+        title: 'Transition Project',
+        initialClips: [
+          const VideoClipModel(
+            id: 'c1',
+            sourcePath: 'c1.mp4',
+            title: 'Clip 1',
+            startTime: Duration.zero,
+            duration: Duration(seconds: 4),
+            sourceDuration: Duration(seconds: 10),
+          ),
+          const VideoClipModel(
+            id: 'c2',
+            sourcePath: 'c2.mp4',
+            title: 'Clip 2',
+            startTime: Duration(seconds: 4),
+            duration: Duration(seconds: 6),
+            sourceDuration: Duration(seconds: 10),
+          ),
+        ],
+      );
+
+      // Single clip transition update
+      provider.updateClipTransition(
+        'c1',
+        TransitionType.crossFade,
+        duration: const Duration(milliseconds: 800),
+      );
+      expect(provider.activeProject!.videoClips[0].transition, TransitionType.crossFade);
+      expect(provider.activeProject!.videoClips[0].transitionDuration, const Duration(milliseconds: 800));
+
+      // Apply transition to all clips
+      provider.applyTransitionToAllClips(
+        TransitionType.zoomIn,
+        duration: const Duration(milliseconds: 600),
+      );
+      for (final clip in provider.activeProject!.videoClips) {
+        expect(clip.transition, TransitionType.zoomIn);
+        expect(clip.transitionDuration, const Duration(milliseconds: 600));
+      }
+    });
+
+    test('CapCut/VN Speed Curve Ramping presets and serialization', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(
+        title: 'Speed Curve Project',
+        initialClips: [
+          const VideoClipModel(
+            id: 'c-curve',
+            sourcePath: 'c.mp4',
+            title: 'Action Clip',
+            startTime: Duration.zero,
+            duration: Duration(seconds: 5),
+            sourceDuration: Duration(seconds: 10),
+          ),
+        ],
+      );
+
+      provider.updateClipSpeedCurve('c-curve', SpeedCurveType.bulletTime);
+      expect(provider.activeProject!.videoClips.first.speedCurve, SpeedCurveType.bulletTime);
+
+      // Verify JSON serialization includes speedCurve
+      final json = provider.activeProject!.videoClips.first.toJson();
+      expect(json['speedCurve'], 'bulletTime');
+
+      final deserialized = VideoClipModel.fromJson(json);
+      expect(deserialized.speedCurve, SpeedCurveType.bulletTime);
+    });
+
+    test('KeyframeModel creation, JSON serialization, and KeyframeTransform interpolation', () {
+      final kf1 = KeyframeModel(
+        id: 'kf-1',
+        timeOffset: const Duration(seconds: 1),
+        scale: 1.0,
+        rotation: 0.0,
+        positionX: 0.0,
+        positionY: 0.0,
+        opacity: 1.0,
+      );
+
+      final kf2 = KeyframeModel(
+        id: 'kf-2',
+        timeOffset: const Duration(seconds: 3),
+        scale: 2.0,
+        rotation: 3.14159,
+        positionX: 0.8,
+        positionY: -0.4,
+        opacity: 0.5,
+      );
+
+      // JSON serialization
+      final json1 = kf1.toJson();
+      final fromJson1 = KeyframeModel.fromJson(json1);
+      expect(fromJson1.scale, 1.0);
+      expect(fromJson1.timeOffset, const Duration(seconds: 1));
+
+      // Interpolation at t = 2s (exact midpoint between 1s and 3s)
+      final midTransform = KeyframeModel.interpolate(
+        keyframes: [kf1, kf2],
+        offset: const Duration(seconds: 2),
+        baseScale: 1.0,
+        baseRotation: 0.0,
+        basePositionX: 0.0,
+        basePositionY: 0.0,
+      );
+
+      expect(midTransform.scale, closeTo(1.5, 0.01));
+      expect(midTransform.rotation, closeTo(1.57, 0.02));
+      expect(midTransform.positionX, closeTo(0.4, 0.01));
+      expect(midTransform.positionY, closeTo(-0.2, 0.01));
+      expect(midTransform.opacity, closeTo(0.75, 0.01));
+
+      // Provider Keyframe CRUD
+      final provider = ProjectProvider();
+      provider.createNewProject(
+        title: 'Keyframe Project',
+        initialClips: [
+          const VideoClipModel(
+            id: 'c-kf',
+            sourcePath: 'c.mp4',
+            title: 'Motion Clip',
+            startTime: Duration.zero,
+            duration: Duration(seconds: 10),
+            sourceDuration: Duration(seconds: 10),
+          ),
+        ],
+      );
+
+      provider.addOrUpdateKeyframe('c-kf', kf1);
+      provider.addOrUpdateKeyframe('c-kf', kf2);
+      expect(provider.activeProject!.videoClips.first.keyframes.length, 2);
+
+      // Remove keyframe at offset
+      provider.removeKeyframeAtOffset('c-kf', const Duration(seconds: 1));
+      expect(provider.activeProject!.videoClips.first.keyframes.length, 1);
+      expect(provider.activeProject!.videoClips.first.keyframes.first.id, 'kf-2');
+    });
+
+    test('Audio Studio volume boost, fade in/out, and voice effect presets', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(
+        title: 'Audio Studio Project',
+      );
+
+      provider.addAudioTrack(
+        const AudioTrackModel(
+          id: 'a-studio-1',
+          title: 'Vocal Track',
+          sourcePath: 'vocal.mp3',
+          startTime: Duration.zero,
+          duration: Duration(seconds: 10),
+        ),
+      );
+
+      provider.updateAudioStudio(
+        'a-studio-1',
+        volume: 1.75, // 175% volume boost
+        fadeIn: const Duration(seconds: 2),
+        fadeOut: const Duration(seconds: 3),
+        effect: VoiceEffectPreset.deepVoice,
+      );
+
+      final track = provider.activeProject!.audioTracks.first;
+      expect(track.volume, 1.75);
+      expect(track.fadeInDuration, const Duration(seconds: 2));
+      expect(track.fadeOutDuration, const Duration(seconds: 3));
+      expect(track.voiceEffect, VoiceEffectPreset.deepVoice);
+
+      // JSON serialization integrity
+      final json = track.toJson();
+      expect(json['volume'], 1.75);
+      expect(json['voiceEffect'], 'deepVoice');
+      final deserialized = AudioTrackModel.fromJson(json);
+      expect(deserialized.voiceEffect, VoiceEffectPreset.deepVoice);
+    });
+
+    test('Canvas Background configuration (blur fill, studio colors, gradients)', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(title: 'Canvas BG Project');
+
+      // Update to solid color
+      provider.updateCanvasBackground(
+        bgType: CanvasBgType.color,
+        colorValue: 0xFF1E293B,
+      );
+      expect(provider.activeProject!.canvasBgType, CanvasBgType.color);
+      expect(provider.activeProject!.canvasColorValue, 0xFF1E293B);
+
+      // Update to gradient
+      provider.updateCanvasBackground(
+        bgType: CanvasBgType.gradient,
+        gradientIndex: 3,
+      );
+      expect(provider.activeProject!.canvasBgType, CanvasBgType.gradient);
+      expect(provider.activeProject!.canvasGradientIndex, 3);
+
+      // Update to blur fill with custom sigma
+      provider.updateCanvasBackground(
+        bgType: CanvasBgType.blur,
+        blurSigma: 24.0,
+      );
+      expect(provider.activeProject!.canvasBgType, CanvasBgType.blur);
+      expect(provider.activeProject!.canvasBlurSigma, 24.0);
+    });
+
+    test('Premiere Pro style ripple delete shifts subsequent clips on track', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(
+        title: 'Ripple Delete Project',
+        initialClips: [
+          const VideoClipModel(
+            id: 'c1',
+            sourcePath: 'c1.mp4',
+            title: 'Clip 1',
+            startTime: Duration.zero,
+            duration: Duration(seconds: 5),
+            sourceDuration: Duration(seconds: 10),
+            trackIndex: 0,
+          ),
+          const VideoClipModel(
+            id: 'c2',
+            sourcePath: 'c2.mp4',
+            title: 'Clip 2 (To Delete)',
+            startTime: Duration(seconds: 5),
+            duration: Duration(seconds: 3),
+            sourceDuration: Duration(seconds: 10),
+            trackIndex: 0,
+          ),
+          const VideoClipModel(
+            id: 'c3',
+            sourcePath: 'c3.mp4',
+            title: 'Clip 3',
+            startTime: Duration(seconds: 8),
+            duration: Duration(seconds: 4),
+            sourceDuration: Duration(seconds: 10),
+            trackIndex: 0,
+          ),
+          const VideoClipModel(
+            id: 'c-v2',
+            sourcePath: 'v2.mp4',
+            title: 'V2 Overlay',
+            startTime: Duration(seconds: 5),
+            duration: Duration(seconds: 6),
+            sourceDuration: Duration(seconds: 10),
+            trackIndex: 1, // On different track
+          ),
+        ],
+      );
+
+      // Ripple delete clip 'c2' (duration = 3s)
+      provider.rippleDeleteClip('c2');
+
+      final clips = provider.activeProject!.videoClips;
+      expect(clips.length, 3);
+      expect(clips.any((c) => c.id == 'c2'), isFalse);
+
+      // Clip 1 start remains unchanged at 0s
+      final c1 = clips.firstWhere((c) => c.id == 'c1');
+      expect(c1.startTime, Duration.zero);
+
+      // Clip 3 should shift earlier by 3s (from 8s to 5s)
+      final c3 = clips.firstWhere((c) => c.id == 'c3');
+      expect(c3.startTime, const Duration(seconds: 5));
+
+      // Clip on track V2 remains untouched at 5s
+      final cv2 = clips.firstWhere((c) => c.id == 'c-v2');
+      expect(cv2.startTime, const Duration(seconds: 5));
     });
   });
 }

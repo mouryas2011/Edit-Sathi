@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/project.dart';
+import '../../services/thumbnail_service.dart';
 
 class ProjectCard extends StatelessWidget {
   final ProjectModel project;
@@ -35,33 +36,6 @@ class ProjectCard extends StatelessWidget {
     }
   }
 
-  LinearGradient _getThumbnailGradient() {
-    if (project.title.toLowerCase().contains('cafe')) {
-      return const LinearGradient(
-        colors: [Color(0xFFD97706), Color(0xFF92400E), Color(0xFF78350F)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    } else if (project.title.toLowerCase().contains('travel')) {
-      return const LinearGradient(
-        colors: [Color(0xFF0284C7), Color(0xFF0369A1), Color(0xFF0F172A)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    } else if (project.title.toLowerCase().contains('reel')) {
-      return const LinearGradient(
-        colors: [Color(0xFFEC4899), Color(0xFF8B5CF6), Color(0xFF312E81)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    return const LinearGradient(
-      colors: [Color(0xFF6366F1), Color(0xFF4338CA)],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -78,76 +52,105 @@ class ProjectCard extends StatelessWidget {
                 width: double.infinity,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  gradient: _getThumbnailGradient(),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
+                      color: Colors.black.withValues(alpha: 0.15),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: Stack(
-                  children: [
-                    // Artistic decorative elements
-                    Positioned(
-                      top: 12,
-                      left: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 3,
-                        ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Real Live Video Thumbnail
+                      ThumbnailService.buildThumbnailWidget(
+                        project,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+
+                      // Vignette overlay for contrast
+                      Container(
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          project.aspectRatio.label,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.35),
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.65),
+                            ],
+                            stops: const [0.0, 0.45, 1.0],
                           ),
                         ),
                       ),
-                    ),
-                    Center(
-                      child: Icon(
-                        project.title.toLowerCase().contains('travel')
-                            ? Icons.landscape_rounded
-                            : (project.title.toLowerCase().contains('cafe')
-                                ? Icons.coffee_rounded
-                                : Icons.movie_filter_rounded),
-                        color: Colors.white.withValues(alpha: 0.45),
-                        size: 44,
-                      ),
-                    ),
-                    // Duration badge at bottom right
-                    Positioned(
-                      bottom: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.75),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          project.formattedDuration,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.3,
+
+                      // Aspect ratio badge (top-left)
+                      Positioned(
+                        top: 10,
+                        left: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.white24, width: 0.5),
+                          ),
+                          child: Text(
+                            project.aspectRatio.label,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+
+                      // Center Play Indicator
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(9),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white38, width: 1),
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+
+                      // Duration badge (bottom-right)
+                      Positioned(
+                        bottom: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.8),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            project.formattedDuration,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

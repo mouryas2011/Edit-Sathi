@@ -7,6 +7,7 @@ import '../../services/media_picker_service.dart';
 import '../../theme/app_colors.dart';
 import '../editor/editor_screen.dart';
 import '../export/export_dialog.dart';
+import '../../services/thumbnail_service.dart';
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({super.key});
@@ -123,18 +124,14 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                             horizontal: 16,
                             vertical: 8,
                           ),
-                          leading: Container(
+                          leading: SizedBox(
                             width: 52,
                             height: 52,
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryLight.withValues(alpha: 0.15),
+                            child: ThumbnailService.buildThumbnailWidget(
+                              project,
+                              width: 52,
+                              height: 52,
                               borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.movie_filter_rounded,
-                                color: AppColors.primary,
-                              ),
                             ),
                           ),
                           title: Text(

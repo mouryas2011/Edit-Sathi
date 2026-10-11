@@ -7,6 +7,7 @@ import '../../../../models/text_overlay.dart';
 import '../../../../models/audio_track.dart';
 import '../../../../models/shape_overlay.dart';
 import '../../../../models/adjustment_layer.dart';
+import '../../../../models/keyframe.dart';
 import '../../../../providers/timeline_provider.dart';
 import '../../../../providers/project_provider.dart';
 import '../../../../services/media_picker_service.dart';
@@ -14,11 +15,13 @@ import '../../../../theme/app_colors.dart';
 import 'timeline_ruler.dart';
 import 'sheets/text_edit_sheet.dart';
 import 'sheets/audio_picker_sheet.dart';
+import 'sheets/audio_edit_sheet.dart';
 import 'sheets/shape_picker_sheet.dart';
 import 'sheets/adjustment_layer_sheet.dart';
 import 'sheets/speed_sheet.dart';
 import 'sheets/filter_picker_sheet.dart';
 import 'sheets/transform_sheet.dart';
+import 'sheets/transition_sheet.dart';
 
 class MultiTrackTimeline extends StatefulWidget {
   const MultiTrackTimeline({super.key});
@@ -1093,6 +1096,14 @@ class _MultiTrackTimelineState extends State<MultiTrackTimeline> {
       if (clip != null) {
         itemLabel = 'V${clip.trackIndex + 1}: ${clip.title}';
         themeColor = const Color(0xFF38BDF8);
+
+        final playhead = timelineProvider.currentPosition;
+        final localOffset = playhead - clip.startTime;
+        final isPlayheadInsideClip = localOffset >= Duration.zero && localOffset <= clip.duration;
+        final hasKeyframeHere = isPlayheadInsideClip && clip.keyframes.any(
+          (k) => (k.timeOffset - localOffset).inMilliseconds.abs() < 120,
+        );
+
         actionButtons = [
           _buildClipActionButton(
             icon: Icons.call_split_rounded,
@@ -1114,6 +1125,57 @@ class _MultiTrackTimelineState extends State<MultiTrackTimeline> {
             },
           ),
           _buildClipActionButton(
+            icon: Icons.auto_awesome_rounded,
+            label: clip.transition != TransitionType.none ? clip.transition.label : 'Transition',
+            color: const Color(0xFFF43F5E),
+            onTap: () {
+              TransitionSheet.show(
+                context: context,
+                currentTransition: clip.transition,
+                currentDuration: clip.transitionDuration,
+                onApply: (trans, dur, applyToAll) {
+                  if (applyToAll) {
+                    projectProvider.applyTransitionToAllClips(trans, duration: dur);
+                  } else {
+                    projectProvider.updateClipTransition(clip.id, trans, duration: dur);
+                  }
+                },
+              );
+            },
+          ),
+          _buildClipActionButton(
+            icon: hasKeyframeHere ? Icons.remove_circle_outline_rounded : Icons.diamond_rounded,
+            label: hasKeyframeHere ? '-◆ Keyframe' : '+◆ Keyframe',
+            color: const Color(0xFFFBBF24),
+            onTap: () {
+              if (!isPlayheadInsideClip) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Move playhead inside this clip to place keyframe')),
+                );
+                return;
+              }
+              if (hasKeyframeHere) {
+                projectProvider.removeKeyframeAtOffset(clip.id, localOffset);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Keyframe removed at playhead')),
+                );
+              } else {
+                final kf = KeyframeModel(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  timeOffset: localOffset,
+                  scale: clip.scale,
+                  rotation: clip.rotation,
+                  positionX: clip.positionX,
+                  positionY: clip.positionY,
+                );
+                projectProvider.addOrUpdateKeyframe(clip.id, kf);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('◆ Keyframe added at playhead!')),
+                );
+              }
+            },
+          ),
+          _buildClipActionButton(
             icon: Icons.transform_rounded,
             label: 'Transform',
             color: const Color(0xFF67E8F9),
@@ -1127,13 +1189,16 @@ class _MultiTrackTimelineState extends State<MultiTrackTimeline> {
           ),
           _buildClipActionButton(
             icon: Icons.speed_rounded,
-            label: '${clip.speed}x Speed',
+            label: clip.speedCurve != SpeedCurveType.none ? clip.speedCurve.label : '${clip.speed}x Speed',
             color: const Color(0xFFFBBF24),
             onTap: () {
               SpeedSheet.show(
                 context: context,
                 currentSpeed: clip.speed,
-                onSpeedSelected: (spd) => projectProvider.updateClipSpeed(clip.id, spd),
+                currentCurve: clip.speedCurve,
+                onSpeedSelected: (spd, curve) => projectProvider.updateVideoClip(
+                  clip.copyWith(speed: spd, speedCurve: curve),
+                ),
               );
             },
           ),
@@ -1156,6 +1221,15 @@ class _MultiTrackTimelineState extends State<MultiTrackTimeline> {
             onTap: () => projectProvider.duplicateVideoClip(clip.id),
           ),
           _buildClipActionButton(
+            icon: Icons.delete_sweep_rounded,
+            label: 'Ripple Del',
+            color: const Color(0xFFF59E0B),
+            onTap: () {
+              projectProvider.rippleDeleteClip(clip.id);
+              timelineProvider.clearSelection();
+            },
+          ),
+          _buildClipActionButton(
             icon: Icons.delete_outline_rounded,
             label: 'Delete',
             color: const Color(0xFFF87171),
@@ -1176,6 +1250,18 @@ class _MultiTrackTimelineState extends State<MultiTrackTimeline> {
         itemLabel = 'A${audio.trackIndex + 1}: ${audio.title}';
         themeColor = const Color(0xFF10B981);
         actionButtons = [
+          _buildClipActionButton(
+            icon: Icons.tune_rounded,
+            label: 'Audio Studio',
+            color: const Color(0xFF10B981),
+            onTap: () {
+              AudioEditSheet.show(
+                context: context,
+                track: audio,
+                onSave: (updated) => projectProvider.updateAudioTrack(updated),
+              );
+            },
+          ),
           _buildClipActionButton(
             icon: Icons.call_split_rounded,
             label: 'Split',
@@ -1574,6 +1660,40 @@ class _MultiTrackTimelineState extends State<MultiTrackTimeline> {
                                 ),
                               ),
                             ),
+                            // Keyframe diamond markers (Premiere / CapCut style)
+                            ...clip.keyframes.map((kf) {
+                              final kfLeft = _durationToPixels(kf.timeOffset, zoom);
+                              return Positioned(
+                                left: (kfLeft - 5).clamp(2.0, actualW - 12),
+                                top: 14,
+                                child: const Icon(
+                                  Icons.diamond_rounded,
+                                  size: 11,
+                                  color: Color(0xFFFBBF24),
+                                ),
+                              );
+                            }),
+                            // Transition indicator badge
+                            if (clip.transition != TransitionType.none)
+                              Positioned(
+                                right: 4,
+                                bottom: 3,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF43F5E),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    clip.transition.label,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 7.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -1615,6 +1735,59 @@ class _MultiTrackTimelineState extends State<MultiTrackTimeline> {
                         onDragEnd: (_) {
                           projectProvider.commitVideoClipMove(clip.id);
                         },
+                      ),
+                    ),
+
+                  // Interactive Transition Badge Button between clips on Track 0 (CapCut / VN style)
+                  if (clip.trackIndex == 0)
+                    Positioned(
+                      right: -10,
+                      top: 10,
+                      child: GestureDetector(
+                        onTap: () {
+                          TransitionSheet.show(
+                            context: context,
+                            currentTransition: clip.transition,
+                            currentDuration: clip.transitionDuration,
+                            onApply: (trans, dur, applyToAll) {
+                              if (applyToAll) {
+                                projectProvider.applyTransitionToAllClips(trans, duration: dur);
+                              } else {
+                                projectProvider.updateClipTransition(clip.id, trans, duration: dur);
+                              }
+                            },
+                          );
+                        },
+                        child: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: clip.transition != TransitionType.none
+                                ? const Color(0xFFF43F5E)
+                                : const Color(0xFF1E293B),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: clip.transition != TransitionType.none
+                                  ? Colors.white
+                                  : Colors.white54,
+                              width: 1.2,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black54,
+                                blurRadius: 3,
+                                offset: Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            clip.transition != TransitionType.none
+                                ? clip.transition.icon
+                                : Icons.hourglass_empty_rounded,
+                            size: 11,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
                 ],
