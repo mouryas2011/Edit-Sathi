@@ -30,6 +30,15 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     final project = context.watch<ProjectProvider>().activeProject;
+    final timeline = context.watch<TimelineProvider>();
+
+    if (project != null && timeline.totalDuration != project.totalDuration) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.read<TimelineProvider>().setTotalDuration(project.totalDuration);
+        }
+      });
+    }
 
     if (project == null) {
       return Scaffold(

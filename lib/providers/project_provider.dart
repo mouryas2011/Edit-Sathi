@@ -87,17 +87,19 @@ class ProjectProvider extends ChangeNotifier {
   ProjectModel createNewProject({
     String title = 'Untitled Project',
     AspectRatioPreset ratio = AspectRatioPreset.vertical9x16,
+    ResolutionPreset resolution = ResolutionPreset.res1080p,
+    List<VideoClipModel> initialClips = const [],
   }) {
     final now = DateTime.now();
     final newProject = ProjectModel(
       id: _uuid.v4(),
       title: title,
       aspectRatio: ratio,
-      resolution: ResolutionPreset.res1080p,
+      resolution: resolution,
       fps: 30,
       createdAt: now,
       updatedAt: now,
-      videoClips: [],
+      videoClips: List.from(initialClips),
       textOverlays: [],
       audioTracks: [],
     );

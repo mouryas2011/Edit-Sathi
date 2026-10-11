@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../providers/project_provider.dart';
+import '../../models/project.dart';
 import '../../models/video_clip.dart';
+import '../../models/text_overlay.dart';
+import '../../models/audio_track.dart';
 import '../../services/template_service.dart';
+import '../../services/media_picker_service.dart';
 import '../../theme/app_colors.dart';
 import '../widgets/project_card.dart';
 import '../widgets/template_card.dart';
@@ -21,39 +25,288 @@ class HomeScreen extends StatelessWidget {
     required this.onNavigateToProjects,
   });
 
-  Future<void> _handleNewProject(BuildContext context) async {
-    final projectProvider = context.read<ProjectProvider>();
-    final picker = ImagePicker();
-
-    try {
-      final video = await picker.pickVideo(source: ImageSource.gallery);
-      final newProj = projectProvider.createNewProject(
-        title: video != null && video.name.isNotEmpty
-            ? video.name.split('.').first
-            : 'New Project',
-      );
-      if (video != null) {
-        newProj.videoClips.add(
-          VideoClipModel(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            sourcePath: video.path,
-            title: video.name,
-            startTime: Duration.zero,
-            duration: const Duration(seconds: 10),
-            sourceDuration: const Duration(seconds: 15),
+  Future<void> _showLoadingDialog(BuildContext context, String message) {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          margin: const EdgeInsets.symmetric(horizontal: 32),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white24, width: 1),
+            boxShadow: const [
+              BoxShadow(color: Colors.black45, blurRadius: 16),
+            ],
           ),
-        );
-        projectProvider.openProject(newProj);
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Flexible(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _importVideoFromPicker(
+    BuildContext context, {
+    ImageSource source = ImageSource.gallery,
+    bool forceFilePicker = false,
+  }) async {
+    final projectProvider = context.read<ProjectProvider>();
+
+    // 1. Request permission
+    await MediaPickerService.requestMediaPermissions();
+
+    if (!context.mounted) return;
+
+    // Show loading
+    _showLoadingDialog(context, 'Importing video & analyzing...');
+
+    PickedVideoInfo? pickedInfo;
+    try {
+      if (forceFilePicker) {
+        pickedInfo = await MediaPickerService.pickVideoFromFileStorage();
+      } else {
+        pickedInfo = await MediaPickerService.pickVideo(source: source);
       }
-    } catch (_) {
-      projectProvider.createNewProject(title: 'New Edit');
+    } catch (e) {
+      debugPrint('Error picking video: $e');
     }
+
+    if (!context.mounted) return;
+    // Dismiss loading dialog
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (pickedInfo == null) {
+      // User cancelled or no video selected
+      return;
+    }
+
+    // Create valid project with real video clip
+    final cleanTitle = pickedInfo.name.contains('.')
+        ? pickedInfo.name.split('.').first
+        : pickedInfo.name;
+
+    final initialClip = VideoClipModel(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      sourcePath: pickedInfo.path,
+      title: cleanTitle,
+      startTime: Duration.zero,
+      duration: pickedInfo.duration,
+      sourceDuration: pickedInfo.duration,
+    );
+
+    projectProvider.createNewProject(
+      title: cleanTitle.isNotEmpty ? cleanTitle : 'My Video Edit',
+      ratio: pickedInfo.aspectRatioPreset,
+      resolution: pickedInfo.resolutionPreset,
+      initialClips: [initialClip],
+    );
 
     if (context.mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const EditorScreen()),
       );
     }
+  }
+
+  void _createSampleProject(BuildContext context) {
+    final projectProvider = context.read<ProjectProvider>();
+    projectProvider.createNewProject(
+      title: 'Cinematic Reel',
+      ratio: AspectRatioPreset.vertical9x16,
+      resolution: ResolutionPreset.res1080p,
+      initialClips: [
+        const VideoClipModel(
+          id: 'sample-clip-1',
+          sourcePath: 'assets/sample_cafe_intro.mp4',
+          title: 'Morning Lights',
+          startTime: Duration.zero,
+          duration: Duration(seconds: 10),
+          sourceDuration: Duration(seconds: 14),
+          filter: VideoFilterPreset.warmSunset,
+        ),
+        const VideoClipModel(
+          id: 'sample-clip-2',
+          sourcePath: 'assets/sample_coffee_pour.mp4',
+          title: 'Aesthetic Pour',
+          startTime: Duration.zero,
+          duration: Duration(seconds: 9),
+          sourceDuration: Duration(seconds: 12),
+          filter: VideoFilterPreset.cinematic,
+        ),
+      ],
+    );
+
+    projectProvider.addTextOverlay(
+      const TextOverlayModel(
+        id: 'sample-text-1',
+        text: 'Morning Vibes ☕',
+        startTime: Duration(seconds: 1),
+        duration: Duration(seconds: 5),
+        positionX: 0.0,
+        positionY: 0.55,
+      ),
+    );
+
+    projectProvider.addAudioTrack(
+      const AudioTrackModel(
+        id: 'sample-audio-1',
+        sourcePath: 'assets/audio/lofi_chill.mp3',
+        title: 'Lofi Chill Beat',
+        type: AudioTrackType.music,
+        startTime: Duration.zero,
+        duration: Duration(seconds: 19),
+      ),
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const EditorScreen()),
+    );
+  }
+
+  void _createBlankProject(BuildContext context) {
+    final projectProvider = context.read<ProjectProvider>();
+    projectProvider.createNewProject(
+      title: 'New Blank Edit',
+      ratio: AspectRatioPreset.vertical9x16,
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const EditorScreen()),
+    );
+  }
+
+  void _showNewProjectSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(22, 16, 22, 28),
+        decoration: const BoxDecoration(
+          color: Color(0xFF161924),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 18),
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const Text(
+              'Create New Project',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Select media from device or start with a sample',
+              style: TextStyle(color: Colors.white60, fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+
+            // Option 1: Gallery / Videos
+            _ImportOptionTile(
+              icon: Icons.photo_library_rounded,
+              iconColor: const Color(0xFF8B5CF6),
+              title: 'Import from Gallery',
+              subtitle: 'Select videos from your phone gallery or photos',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _importVideoFromPicker(context, source: ImageSource.gallery);
+              },
+            ),
+
+            // Option 2: Files / Storage
+            _ImportOptionTile(
+              icon: Icons.folder_open_rounded,
+              iconColor: const Color(0xFF06B6D4),
+              title: 'Choose Video File',
+              subtitle: 'Browse downloads, SD card, or local device files',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _importVideoFromPicker(context, forceFilePicker: true);
+              },
+            ),
+
+            // Option 3: Camera
+            _ImportOptionTile(
+              icon: Icons.videocam_rounded,
+              iconColor: const Color(0xFFF43F5E),
+              title: 'Record with Camera',
+              subtitle: 'Capture a fresh video clip right now',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _importVideoFromPicker(context, source: ImageSource.camera);
+              },
+            ),
+
+            // Option 4: Sample Demo Video
+            _ImportOptionTile(
+              icon: Icons.movie_filter_rounded,
+              iconColor: const Color(0xFFF59E0B),
+              title: 'Try Sample Demo Project',
+              subtitle: 'Test all editor features instantly with ready media',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _createSampleProject(context);
+              },
+            ),
+
+            // Option 5: Blank Project
+            _ImportOptionTile(
+              icon: Icons.aspect_ratio_rounded,
+              iconColor: const Color(0xFF10B981),
+              title: 'Blank Canvas Project',
+              subtitle: 'Start with an empty timeline and add media anytime',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _createBlankProject(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleNewProject(BuildContext context) async {
+    _showNewProjectSheet(context);
   }
 
   void _showAiToolsSheet(BuildContext context) {
@@ -105,6 +358,8 @@ class HomeScreen extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const EditorScreen()),
                   );
+                } else {
+                  _createSampleProject(context);
                 }
               },
             ),
@@ -129,6 +384,8 @@ class HomeScreen extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const EditorScreen()),
                   );
+                } else {
+                  _createSampleProject(context);
                 }
               },
             ),
@@ -153,6 +410,8 @@ class HomeScreen extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const EditorScreen()),
                   );
+                } else {
+                  _createSampleProject(context);
                 }
               },
             ),
@@ -356,6 +615,8 @@ class HomeScreen extends StatelessWidget {
                             builder: (_) => const EditorScreen(),
                           ),
                         );
+                      } else {
+                        _showNewProjectSheet(context);
                       }
                     },
                   ),
@@ -559,3 +820,58 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
+
+class _ImportOptionTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _ImportOptionTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12, width: 1),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: iconColor, size: 24),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 15,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: const TextStyle(color: Colors.white60, fontSize: 12),
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white38),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+

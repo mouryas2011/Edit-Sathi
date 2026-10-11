@@ -6,6 +6,7 @@ import '../../../../models/text_overlay.dart';
 import '../../../../models/audio_track.dart';
 import '../../../../providers/timeline_provider.dart';
 import '../../../../providers/project_provider.dart';
+import '../../../../services/media_picker_service.dart';
 import '../../../../theme/app_colors.dart';
 import 'timeline_ruler.dart';
 import 'sheets/text_edit_sheet.dart';
@@ -21,7 +22,6 @@ class MultiTrackTimeline extends StatefulWidget {
 
 class _MultiTrackTimelineState extends State<MultiTrackTimeline> {
   final ScrollController _scrollController = ScrollController();
-  final ImagePicker _picker = ImagePicker();
 
   // Pixels per second at 1.0 zoom (e.g. 35 pixels = 1 second)
   final double _basePixelsPerSecond = 32.0;
@@ -43,32 +43,149 @@ class _MultiTrackTimelineState extends State<MultiTrackTimeline> {
     return Duration(milliseconds: (sec * 1000).round());
   }
 
-  Future<void> _pickNewVideoClip(BuildContext context, ProjectProvider projectProvider) async {
-    try {
-      final file = await _picker.pickVideo(source: ImageSource.gallery);
-      if (file != null) {
-        final newClip = VideoClipModel(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          sourcePath: file.path,
-          title: file.name.isNotEmpty ? file.name : 'New Video Clip',
-          startTime: Duration.zero, // ProjectProvider positions it sequentially
-          duration: const Duration(seconds: 8),
-          sourceDuration: const Duration(seconds: 12),
-        );
-        projectProvider.addVideoClip(newClip);
-      }
-    } catch (e) {
-      // Fallback sample clip if native picker fails in simulator/environment
-      final newClip = VideoClipModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        sourcePath: 'assets/sample_clip.mp4',
-        title: 'New Scene Clip',
-        startTime: Duration.zero,
-        duration: const Duration(seconds: 6),
-        sourceDuration: const Duration(seconds: 10),
+  Future<void> _addClipFromPickedInfo(
+    BuildContext context,
+    PickedVideoInfo picked,
+    ProjectProvider projectProvider,
+  ) async {
+    final cleanTitle = picked.name.contains('.')
+        ? picked.name.split('.').first
+        : picked.name;
+
+    final newClip = VideoClipModel(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      sourcePath: picked.path,
+      title: cleanTitle.isNotEmpty ? cleanTitle : 'New Clip',
+      startTime: Duration.zero, // projectProvider places it sequentially
+      duration: picked.duration,
+      sourceDuration: picked.duration,
+    );
+
+    projectProvider.addVideoClip(newClip);
+    final active = projectProvider.activeProject;
+    if (active != null && context.mounted) {
+      context.read<TimelineProvider>().setTotalDuration(active.totalDuration);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Added clip: $cleanTitle'),
+          duration: const Duration(seconds: 2),
+        ),
       );
-      projectProvider.addVideoClip(newClip);
     }
+  }
+
+  Future<void> _pickNewVideoClip(
+    BuildContext context,
+    ProjectProvider projectProvider,
+  ) async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        decoration: const BoxDecoration(
+          color: Color(0xFF161924),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const Text(
+              'Add Video Clip',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 14),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFF8B5CF6),
+                child: Icon(Icons.photo_library_rounded, color: Colors.white),
+              ),
+              title: const Text('From Gallery / Photos', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Pick video from gallery', style: TextStyle(color: Colors.white60)),
+              onTap: () async {
+                Navigator.of(ctx).pop();
+                final picked = await MediaPickerService.pickVideo(source: ImageSource.gallery);
+                if (picked != null && context.mounted) {
+                  await _addClipFromPickedInfo(context, picked, projectProvider);
+                }
+              },
+            ),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFF06B6D4),
+                child: Icon(Icons.folder_open_rounded, color: Colors.white),
+              ),
+              title: const Text('From Files / Storage', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Browse device files or downloads', style: TextStyle(color: Colors.white60)),
+              onTap: () async {
+                Navigator.of(ctx).pop();
+                final picked = await MediaPickerService.pickVideoFromFileStorage();
+                if (picked != null && context.mounted) {
+                  await _addClipFromPickedInfo(context, picked, projectProvider);
+                }
+              },
+            ),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFF43F5E),
+                child: Icon(Icons.videocam_rounded, color: Colors.white),
+              ),
+              title: const Text('Record Video with Camera', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Capture video directly', style: TextStyle(color: Colors.white60)),
+              onTap: () async {
+                Navigator.of(ctx).pop();
+                final picked = await MediaPickerService.pickVideo(source: ImageSource.camera);
+                if (picked != null && context.mounted) {
+                  await _addClipFromPickedInfo(context, picked, projectProvider);
+                }
+              },
+            ),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFF59E0B),
+                child: Icon(Icons.movie_creation_outlined, color: Colors.white),
+              ),
+              title: const Text('Add Sample Scene Clip', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Insert a sample scene for testing', style: TextStyle(color: Colors.white60)),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                final clipNumber = (projectProvider.activeProject?.videoClips.length ?? 0) + 1;
+                final newClip = VideoClipModel(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  sourcePath: 'assets/sample_clip_$clipNumber.mp4',
+                  title: 'Scene Clip $clipNumber',
+                  startTime: Duration.zero,
+                  duration: const Duration(seconds: 8),
+                  sourceDuration: const Duration(seconds: 12),
+                  filter: VideoFilterPreset.cinematic,
+                );
+                projectProvider.addVideoClip(newClip);
+                final active = projectProvider.activeProject;
+                if (active != null && context.mounted) {
+                  context.read<TimelineProvider>().setTotalDuration(active.totalDuration);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override

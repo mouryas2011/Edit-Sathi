@@ -180,5 +180,64 @@ void main() {
       expect(estimatedBytes, 15240000);
       expect(settings.formatEstimatedSize(const Duration(seconds: 10)), '14.5 MB');
     });
+
+    test('ProjectProvider creates project with initialClips correctly', () {
+      final provider = ProjectProvider();
+      const clip = VideoClipModel(
+        id: 'clip-init-1',
+        sourcePath: '/storage/sample.mp4',
+        title: 'Initial Video',
+        startTime: Duration.zero,
+        duration: Duration(seconds: 24),
+        sourceDuration: Duration(seconds: 24),
+      );
+
+      final project = provider.createNewProject(
+        title: 'Imported Video',
+        ratio: AspectRatioPreset.vertical9x16,
+        resolution: ResolutionPreset.res1080p,
+        initialClips: [clip],
+      );
+
+      expect(project.videoClips.length, 1);
+      expect(project.videoClips.first.duration, const Duration(seconds: 24));
+      expect(project.totalDuration, const Duration(seconds: 24));
+      expect(provider.activeProject?.id, project.id);
+    });
+
+    test('Sequentially appending clips stacks them on the timeline', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(title: 'Multi Clip Test');
+
+      provider.addVideoClip(
+        const VideoClipModel(
+          id: 'c1',
+          sourcePath: 'v1.mp4',
+          title: 'Scene 1',
+          startTime: Duration.zero,
+          duration: Duration(seconds: 8),
+          sourceDuration: Duration(seconds: 8),
+        ),
+      );
+
+      provider.addVideoClip(
+        const VideoClipModel(
+          id: 'c2',
+          sourcePath: 'v2.mp4',
+          title: 'Scene 2',
+          startTime: Duration.zero,
+          duration: Duration(seconds: 12),
+          sourceDuration: Duration(seconds: 12),
+        ),
+      );
+
+      final clips = provider.activeProject!.videoClips;
+      expect(clips.length, 2);
+      expect(clips[0].startTime, Duration.zero);
+      expect(clips[0].endTime, const Duration(seconds: 8));
+      expect(clips[1].startTime, const Duration(seconds: 8));
+      expect(clips[1].endTime, const Duration(seconds: 20));
+      expect(provider.activeProject!.totalDuration, const Duration(seconds: 20));
+    });
   });
 }

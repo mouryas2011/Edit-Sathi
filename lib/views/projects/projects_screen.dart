@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/project_provider.dart';
 import '../../models/project.dart';
+import '../../models/video_clip.dart';
+import '../../services/media_picker_service.dart';
 import '../../theme/app_colors.dart';
 import '../editor/editor_screen.dart';
 import '../export/export_dialog.dart';
@@ -195,9 +197,123 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         icon: const Icon(Icons.add),
         label: const Text('New Project'),
         onPressed: () {
-          projectProvider.createNewProject(title: 'New Video');
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const EditorScreen()),
+          showModalBottomSheet(
+            context: context,
+            backgroundColor: Colors.transparent,
+            builder: (ctx) => Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              decoration: const BoxDecoration(
+                color: Color(0xFF161924),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const Text(
+                    'Create New Project',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFF8B5CF6),
+                      child: Icon(Icons.photo_library_rounded, color: Colors.white),
+                    ),
+                    title: const Text('Import from Gallery', style: TextStyle(color: Colors.white)),
+                    subtitle: const Text('Pick video from phone gallery', style: TextStyle(color: Colors.white60)),
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      final picked = await MediaPickerService.pickVideo();
+                      if (picked != null && context.mounted) {
+                        final clean = picked.name.contains('.') ? picked.name.split('.').first : picked.name;
+                        projectProvider.createNewProject(
+                          title: clean.isNotEmpty ? clean : 'New Project',
+                          ratio: picked.aspectRatioPreset,
+                          resolution: picked.resolutionPreset,
+                          initialClips: [
+                            VideoClipModel(
+                              id: DateTime.now().millisecondsSinceEpoch.toString(),
+                              sourcePath: picked.path,
+                              title: clean,
+                              startTime: Duration.zero,
+                              duration: picked.duration,
+                              sourceDuration: picked.duration,
+                            ),
+                          ],
+                        );
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const EditorScreen()),
+                        );
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFF06B6D4),
+                      child: Icon(Icons.folder_open_rounded, color: Colors.white),
+                    ),
+                    title: const Text('Choose Video File', style: TextStyle(color: Colors.white)),
+                    subtitle: const Text('Browse device downloads or files', style: TextStyle(color: Colors.white60)),
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      final picked = await MediaPickerService.pickVideoFromFileStorage();
+                      if (picked != null && context.mounted) {
+                        final clean = picked.name.contains('.') ? picked.name.split('.').first : picked.name;
+                        projectProvider.createNewProject(
+                          title: clean.isNotEmpty ? clean : 'New Project',
+                          ratio: picked.aspectRatioPreset,
+                          resolution: picked.resolutionPreset,
+                          initialClips: [
+                            VideoClipModel(
+                              id: DateTime.now().millisecondsSinceEpoch.toString(),
+                              sourcePath: picked.path,
+                              title: clean,
+                              startTime: Duration.zero,
+                              duration: picked.duration,
+                              sourceDuration: picked.duration,
+                            ),
+                          ],
+                        );
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const EditorScreen()),
+                        );
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFF10B981),
+                      child: Icon(Icons.aspect_ratio_rounded, color: Colors.white),
+                    ),
+                    title: const Text('Blank Canvas Project', style: TextStyle(color: Colors.white)),
+                    subtitle: const Text('Start with an empty timeline', style: TextStyle(color: Colors.white60)),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      projectProvider.createNewProject(title: 'New Edit');
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const EditorScreen()),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
           );
         },
       ),

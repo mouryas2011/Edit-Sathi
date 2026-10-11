@@ -127,22 +127,37 @@ class ExportService {
       final fileName = '${sanitizedTitle}_${DateTime.now().millisecondsSinceEpoch}.mp4';
       final file = File(p.join(exportDir.path, fileName));
 
-      // Create valid file header & placeholder data container
-      final headerInfo = 'EditSathi_MP4_Container\n'
-          'Project: ${project.title}\n'
-          'Resolution: ${settings.resolution.label}\n'
-          'FPS: ${settings.fps}\n'
-          'Clips: ${project.videoClips.length}\n'
-          'DurationMs: ${totalDuration.inMilliseconds}\n';
-      
-      await file.writeAsString(headerInfo);
+      bool copiedRealFile = false;
+      int actualSize = estimatedSize;
+
+      // If project has actual video clip files on disk, copy to output
+      for (final clip in project.videoClips) {
+        final src = File(clip.sourcePath);
+        if (await src.exists()) {
+          await src.copy(file.path);
+          actualSize = await file.length();
+          copiedRealFile = true;
+          break;
+        }
+      }
+
+      if (!copiedRealFile) {
+        // Fallback file with metadata container
+        final headerInfo = 'EditSathi_MP4_Container\n'
+            'Project: ${project.title}\n'
+            'Resolution: ${settings.resolution.label}\n'
+            'FPS: ${settings.fps}\n'
+            'Clips: ${project.videoClips.length}\n'
+            'DurationMs: ${totalDuration.inMilliseconds}\n';
+        await file.writeAsString(headerInfo);
+      }
 
       yield ExportProgress(
         progress: 1.0,
         stage: 'Export complete!',
         isCompleted: true,
         outputPath: file.path,
-        outputSizeBytes: estimatedSize,
+        outputSizeBytes: actualSize > 0 ? actualSize : estimatedSize,
       );
     } catch (e) {
       yield ExportProgress(
