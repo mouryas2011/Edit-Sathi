@@ -239,5 +239,109 @@ void main() {
       expect(clips[1].endTime, const Duration(seconds: 20));
       expect(provider.activeProject!.totalDuration, const Duration(seconds: 20));
     });
+
+    test('Adobe Premiere Pro multi-track video and audio tracks expansion and placement', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(title: 'Premiere Pro Multi-Track Test');
+
+      expect(provider.activeProject!.videoTrackCount, 1);
+      expect(provider.activeProject!.audioTrackCount, 1);
+
+      // Add Video Track V2
+      provider.addVideoTrack();
+      expect(provider.activeProject!.videoTrackCount, 2);
+
+      // Add Audio Track A2
+      provider.addAudioTrackLane();
+      expect(provider.activeProject!.audioTrackCount, 2);
+
+      // Place clip on Track V2
+      provider.addVideoClipToTrack(
+        const VideoClipModel(
+          id: 'v2-clip',
+          sourcePath: 'overlay.mp4',
+          title: 'B-Roll Overlay',
+          startTime: Duration(seconds: 4),
+          duration: Duration(seconds: 6),
+          sourceDuration: Duration(seconds: 6),
+          trackIndex: 1, // V2
+        ),
+        trackIndex: 1,
+        startTime: const Duration(seconds: 4),
+      );
+
+      // Place audio on Track A2
+      provider.addAudioClipToTrack(
+        const AudioTrackModel(
+          id: 'a2-audio',
+          title: 'SFX Whoosh',
+          sourcePath: 'whoosh.mp3',
+          startTime: Duration(seconds: 3),
+          duration: Duration(seconds: 2),
+          trackIndex: 1, // A2
+        ),
+        trackIndex: 1,
+        startTime: const Duration(seconds: 3),
+      );
+
+      final project = provider.activeProject!;
+      expect(project.videoClips.any((c) => c.trackIndex == 1), isTrue);
+      expect(project.audioTracks.any((a) => a.trackIndex == 1), isTrue);
+
+      // Test Track toggles (Mute, Hide, Lock)
+      provider.toggleHideVideoTrack(1);
+      expect(provider.activeProject!.hiddenVideoTracks.contains(1), isTrue);
+      provider.toggleHideVideoTrack(1);
+      expect(provider.activeProject!.hiddenVideoTracks.contains(1), isFalse);
+
+      provider.toggleMuteAudioTrack(0);
+      expect(provider.activeProject!.mutedAudioTracks.contains(0), isTrue);
+      provider.toggleLockVideoTrack(1);
+      expect(provider.activeProject!.lockedVideoTracks.contains(1), isTrue);
+    });
+
+    test('splitClipAtPlayhead cleanly splits target clip under needle', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(title: 'Split Test');
+
+      provider.addVideoClip(
+        const VideoClipModel(
+          id: 'clip-to-split',
+          sourcePath: 'long_video.mp4',
+          title: 'Full Scene',
+          startTime: Duration.zero,
+          duration: Duration(seconds: 20),
+          sourceDuration: Duration(seconds: 20),
+        ),
+      );
+
+      // Split at 7.5 seconds
+      final success = provider.splitClipAtPlayhead(const Duration(milliseconds: 7500));
+      expect(success, isTrue);
+
+      final clips = provider.activeProject!.videoClips;
+      expect(clips.length, 2);
+      expect(clips[0].duration, const Duration(milliseconds: 7500));
+      expect(clips[1].startTime, const Duration(milliseconds: 7500));
+      expect(clips[1].duration, const Duration(milliseconds: 12500));
+    });
+
+    test('TimelineProvider stepping and zoom adjustments work accurately', () {
+      final timeline = TimelineProvider();
+      timeline.setTotalDuration(const Duration(seconds: 30));
+
+      expect(timeline.currentPosition, Duration.zero);
+      timeline.stepForward(step: const Duration(seconds: 2));
+      expect(timeline.currentPosition, const Duration(seconds: 2));
+
+      timeline.stepBackward(step: const Duration(seconds: 1));
+      expect(timeline.currentPosition, const Duration(seconds: 1));
+
+      final initialZoom = timeline.zoomLevel;
+      timeline.zoomIn();
+      expect(timeline.zoomLevel, initialZoom + 0.25);
+      timeline.zoomOut();
+      expect(timeline.zoomLevel, initialZoom);
+    });
   });
 }

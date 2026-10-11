@@ -78,8 +78,7 @@ jobs:
             exit 1
           fi
 
-          cp "$APK_PATH" release-output/Edit-Sathi-v1.0.1.apk
-          cp "$APK_PATH" release-output/Edit-Sathi-v1.0.0.apk
+          cp "$APK_PATH" release-output/Edit-Sathi-v1.0.2.apk
           cp "$APK_PATH" release-output/Edit-Sathi-release.apk
           echo "APKs successfully prepared:"
           ls -lh release-output/
@@ -87,37 +86,50 @@ jobs:
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Edit-Sathi-v1.0.1-APK
-          path: release-output/Edit-Sathi-v1.0.1.apk
+          name: Edit-Sathi-v1.0.2-APK
+          path: release-output/Edit-Sathi-v1.0.2.apk
           retention-days: 30
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         with:
-          tag_name: v1.0.1
-          name: "Edit Sathi v1.0.1 Release"
+          tag_name: v1.0.2
+          name: "Edit Sathi v1.0.2 - Premiere Pro Multi-Track & Lag-Free Playback"
           body: |
-            ## 🎬 Edit Sathi - Video Editing Application (Android APK v1.0.1)
+            ## 🎬 Edit Sathi - Video Editing Application (Android APK v1.0.2)
 
-            ### 🚀 What's New in v1.0.1
-            - **Fixed Video Import & Playback Canvas**: Videos now decode, render, and scrub directly on the preview canvas without fallback to static gradient.
-            - **Private Sandbox Storage**: Imported videos are securely persisted into the app documents sandbox, eliminating Android 13/14 Scoped Storage permission issues.
-            - **100% On-Device AI Tools Suite**:
-              - 📝 Auto Captions (Hinglish, Hindi, English, Spanish) with instant .SRT export
-              - ✂️ Dead-air / Silence Jump-Cutter
-              - 🌟 Key Highlight Pacing Finder
-              - 🖼️ AI Thumbnail Quality Ranker
-              - 🔊 Audio Doctor LUFS Loudness Diagnostics & Normalizer
-            - **Hardware Acceleration & Large Heap**: Configured for smooth decoding of 1080p and 4K footage.
+            ### 🚀 What's New in v1.0.2
+            - **⚡ 100% Lag-Free Playback Engine**: ExoPlayer hardware decoder clock decoupled from Dart seek loops. Zero frame drops, no seek stutter, silky smooth 60fps playback.
+            - **▶️ Dedicated Transport Controls**:
+              - Prominent cyan/blue glowing Play / Pause button.
+              - Exact monospace timecode display (`00:03.12 / 00:28.00`).
+              - Quick Step `-1s` / `+1s` controls.
+              - Instant Split clip at current playhead (`✂`).
+              - Timeline Zoom In (`+`) and Zoom Out (`-`).
+              - `+ Track` shortcut button.
+            - **🎞️ Adobe Premiere Pro Style Stacked Multi-Track Timeline**:
+              - Stacked Video Tracks (`V1`, `V2`, `V3`...) with visual filmstrip frame indicators.
+              - Stacked Audio Tracks (`A1`, `A2`, `A3`...) with real-time waveform bars.
+              - Text & Subtitle track lane (`TXT`).
+            - **🎛️ Left Track Header Dock**:
+              - Track Badges (`V1`, `V2`, `TXT`, `A1`, `A2`).
+              - Eye button: Toggle track visibility / hide track.
+              - Mute button: Toggle track audio mute.
+              - Lock button: Prevent accidental edits.
+              - Direct `+` Add Clip button per track to place media directly on that lane.
+            - **↔️ Unblocked Timeline Scrolling & Extended Trailing Canvas**:
+              - Horizontal drag conflicts removed so thumb swiping scrolls the timeline naturally with fluid inertia.
+              - +400px extended blank canvas space past the last clip to easily scroll forward and place new clips.
+              - Playhead scrubbing on the interactive Time Ruler and needle knob.
+              - Smooth auto-scrolling during playback to keep playhead in view.
 
             ### 📲 How to Install
-            1. Download `Edit-Sathi-v1.0.1.apk` below directly to your Android device.
+            1. Download `Edit-Sathi-v1.0.2.apk` below directly to your Android device.
             2. Tap the file to install (Enable *"Install from Unknown Sources"* if prompted).
             3. Open Edit Sathi and start editing!
           files: |
-            release-output/Edit-Sathi-v1.0.1.apk
-            release-output/Edit-Sathi-v1.0.0.apk
+            release-output/Edit-Sathi-v1.0.2.apk
             release-output/Edit-Sathi-release.apk
           draft: false
           prerelease: false

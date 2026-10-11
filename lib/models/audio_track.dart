@@ -16,6 +16,7 @@ class AudioTrackModel {
   final double volume; // 0.0 - 1.0
   final bool isMuted;
   final List<double> waveformData;
+  final int trackIndex; // 0 for A1, 1 for A2, 2 for A3...
 
   const AudioTrackModel({
     required this.id,
@@ -29,6 +30,7 @@ class AudioTrackModel {
     this.volume = 1.0,
     this.isMuted = false,
     this.waveformData = const [],
+    this.trackIndex = 0,
   });
 
   Duration get endTime => startTime + duration;
@@ -45,6 +47,7 @@ class AudioTrackModel {
     double? volume,
     bool? isMuted,
     List<double>? waveformData,
+    int? trackIndex,
   }) {
     return AudioTrackModel(
       id: id ?? this.id,
@@ -58,6 +61,7 @@ class AudioTrackModel {
       volume: volume ?? this.volume,
       isMuted: isMuted ?? this.isMuted,
       waveformData: waveformData ?? this.waveformData,
+      trackIndex: trackIndex ?? this.trackIndex,
     );
   }
 
@@ -74,6 +78,7 @@ class AudioTrackModel {
       'volume': volume,
       'isMuted': isMuted,
       'waveformData': waveformData,
+      'trackIndex': trackIndex,
     };
   }
 
@@ -96,6 +101,7 @@ class AudioTrackModel {
               ?.map((e) => (e as num).toDouble())
               .toList() ??
           [],
+      trackIndex: json['trackIndex'] as int? ?? 0,
     );
   }
 }

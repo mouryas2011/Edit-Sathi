@@ -39,6 +39,13 @@ class ProjectModel {
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? customThumbnail;
+  final int videoTrackCount; // e.g. 1 (V1), 2 (V2), 3 (V3)
+  final int audioTrackCount; // e.g. 1 (A1), 2 (A2), 3 (A3)
+  final List<int> mutedVideoTracks;
+  final List<int> hiddenVideoTracks;
+  final List<int> lockedVideoTracks;
+  final List<int> mutedAudioTracks;
+  final List<int> lockedAudioTracks;
 
   const ProjectModel({
     required this.id,
@@ -53,6 +60,13 @@ class ProjectModel {
     required this.createdAt,
     required this.updatedAt,
     this.customThumbnail,
+    this.videoTrackCount = 1,
+    this.audioTrackCount = 1,
+    this.mutedVideoTracks = const [],
+    this.hiddenVideoTracks = const [],
+    this.lockedVideoTracks = const [],
+    this.mutedAudioTracks = const [],
+    this.lockedAudioTracks = const [],
   });
 
   /// Computes the total timeline length based on all tracks.
@@ -98,6 +112,13 @@ class ProjectModel {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? customThumbnail,
+    int? videoTrackCount,
+    int? audioTrackCount,
+    List<int>? mutedVideoTracks,
+    List<int>? hiddenVideoTracks,
+    List<int>? lockedVideoTracks,
+    List<int>? mutedAudioTracks,
+    List<int>? lockedAudioTracks,
   }) {
     return ProjectModel(
       id: id ?? this.id,
@@ -112,6 +133,13 @@ class ProjectModel {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       customThumbnail: customThumbnail ?? this.customThumbnail,
+      videoTrackCount: videoTrackCount ?? this.videoTrackCount,
+      audioTrackCount: audioTrackCount ?? this.audioTrackCount,
+      mutedVideoTracks: mutedVideoTracks ?? this.mutedVideoTracks,
+      hiddenVideoTracks: hiddenVideoTracks ?? this.hiddenVideoTracks,
+      lockedVideoTracks: lockedVideoTracks ?? this.lockedVideoTracks,
+      mutedAudioTracks: mutedAudioTracks ?? this.mutedAudioTracks,
+      lockedAudioTracks: lockedAudioTracks ?? this.lockedAudioTracks,
     );
   }
 
@@ -129,6 +157,13 @@ class ProjectModel {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'customThumbnail': customThumbnail,
+      'videoTrackCount': videoTrackCount,
+      'audioTrackCount': audioTrackCount,
+      'mutedVideoTracks': mutedVideoTracks,
+      'hiddenVideoTracks': hiddenVideoTracks,
+      'lockedVideoTracks': lockedVideoTracks,
+      'mutedAudioTracks': mutedAudioTracks,
+      'lockedAudioTracks': lockedAudioTracks,
     };
   }
 
@@ -166,6 +201,13 @@ class ProjectModel {
       updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
           DateTime.now(),
       customThumbnail: json['customThumbnail'] as String?,
+      videoTrackCount: json['videoTrackCount'] as int? ?? 1,
+      audioTrackCount: json['audioTrackCount'] as int? ?? 1,
+      mutedVideoTracks: (json['mutedVideoTracks'] as List<dynamic>?)?.map((e) => e as int).toList() ?? const [],
+      hiddenVideoTracks: (json['hiddenVideoTracks'] as List<dynamic>?)?.map((e) => e as int).toList() ?? const [],
+      lockedVideoTracks: (json['lockedVideoTracks'] as List<dynamic>?)?.map((e) => e as int).toList() ?? const [],
+      mutedAudioTracks: (json['mutedAudioTracks'] as List<dynamic>?)?.map((e) => e as int).toList() ?? const [],
+      lockedAudioTracks: (json['lockedAudioTracks'] as List<dynamic>?)?.map((e) => e as int).toList() ?? const [],
     );
   }
 }

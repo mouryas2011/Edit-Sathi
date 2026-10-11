@@ -141,6 +141,39 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
     return null;
   }
 
+  void _onPlayerTick() {
+    if (!mounted || _controller == null || !_controller!.value.isInitialized) return;
+    final ctrl = _controller!;
+    if (ctrl.value.isPlaying) {
+      final timeline = context.read<TimelineProvider>();
+      final project = context.read<ProjectProvider>().activeProject;
+      if (project == null) return;
+
+      final clip = project.videoClips.where((c) => c.id == _loadedClipId).firstOrNull;
+      if (clip != null) {
+        final pos = ctrl.value.position;
+        final playedFromTrim = pos - clip.trimStart;
+        final ms = (playedFromTrim.inMilliseconds / (clip.speed > 0 ? clip.speed : 1.0)).round();
+        final timelinePos = clip.startTime + Duration(milliseconds: ms);
+
+        // Check if clip has finished
+        if (pos >= clip.trimStart + clip.duration) {
+          final nextClips = project.videoClips
+              .where((c) => !project.hiddenVideoTracks.contains(c.trackIndex) && c.startTime >= clip.endTime)
+              .toList()..sort((a, b) => a.startTime.compareTo(b.startTime));
+          if (nextClips.isNotEmpty) {
+            timeline.seekTo(nextClips.first.startTime);
+          } else {
+            timeline.pause();
+          }
+        } else {
+          timeline.updatePositionFromPlayback(timelinePos);
+        }
+      }
+    }
+    setState(() {});
+  }
+
   Future<void> _setupClipController(VideoClipModel clip, Duration timelinePos, bool isPlaying) async {
     if (_isControllerInitializing) return;
     _isControllerInitializing = true;
@@ -163,20 +196,25 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
         }
 
         newController.setLooping(false);
-        await newController.setVolume(clip.isMuted ? 0.0 : clip.volume);
+        final isTrackMuted = context.read<ProjectProvider>().activeProject?.mutedVideoTracks.contains(clip.trackIndex) ?? false;
+        await newController.setVolume(clip.isMuted || isTrackMuted ? 0.0 : clip.volume);
         await newController.setPlaybackSpeed(clip.speed);
 
         // Seek to initial offset
         final localOffset = _calculateClipLocalPosition(clip, timelinePos);
         await newController.seekTo(localOffset);
 
+        if (!mounted) {
+          await newController.dispose();
+          return;
+        }
+
         if (isPlaying) {
+          context.read<TimelineProvider>().setPlayerDriving(true);
           await newController.play();
         }
 
-        newController.addListener(() {
-          if (mounted) setState(() {});
-        });
+        newController.addListener(_onPlayerTick);
 
         _controller = newController;
         _loadedClipId = clip.id;
@@ -209,7 +247,10 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
         _loadedClipId = null;
         _loadedClipPath = null;
         await c?.dispose();
-        if (mounted) setState(() {});
+        if (mounted) {
+          context.read<TimelineProvider>().setPlayerDriving(false);
+          setState(() {});
+        }
       }
       return;
     }
@@ -225,7 +266,8 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
       final ctrl = _controller!;
 
       // Sync volume & speed
-      final targetVolume = clip.isMuted ? 0.0 : clip.volume;
+      final isTrackMuted = context.read<ProjectProvider>().activeProject?.mutedVideoTracks.contains(clip.trackIndex) ?? false;
+      final targetVolume = clip.isMuted || isTrackMuted ? 0.0 : clip.volume;
       if (ctrl.value.volume != targetVolume) {
         ctrl.setVolume(targetVolume);
       }
@@ -235,15 +277,20 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
 
       // Sync play/pause
       if (isPlaying && !ctrl.value.isPlaying) {
+        context.read<TimelineProvider>().setPlayerDriving(true);
         ctrl.play();
       } else if (!isPlaying && ctrl.value.isPlaying) {
+        context.read<TimelineProvider>().setPlayerDriving(false);
         ctrl.pause();
       }
 
-      // Sync seek position when paused or if desynchronized > 250ms
-      final targetLocal = _calculateClipLocalPosition(clip, timelinePos);
-      if (!isPlaying || (ctrl.value.position - targetLocal).abs() > const Duration(milliseconds: 250)) {
-        ctrl.seekTo(targetLocal);
+      // CRITICAL: NEVER call seekTo while playing! ExoPlayer plays at hardware rate.
+      // Only seek when paused and offset is visibly different (> 50ms)
+      if (!isPlaying) {
+        final targetLocal = _calculateClipLocalPosition(clip, timelinePos);
+        if ((ctrl.value.position - targetLocal).abs() > const Duration(milliseconds: 50)) {
+          ctrl.seekTo(targetLocal);
+        }
       }
     }
   }
@@ -315,20 +362,28 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
     final currentPos = timeline.currentPosition;
     final totalDuration = project.totalDuration;
 
-    // Find active clip at current playhead position
+    // Find active clip at current playhead position across stacked tracks (highest visible track wins)
+    final candidateClips = project.videoClips.where((c) {
+      if (project.hiddenVideoTracks.contains(c.trackIndex)) return false;
+      return currentPos >= c.startTime && currentPos <= c.endTime;
+    }).toList();
+
     VideoClipModel? activeClip;
-    for (final clip in project.videoClips) {
-      if (currentPos >= clip.startTime && currentPos <= clip.endTime) {
-        activeClip = clip;
-        break;
-      }
-    }
-    // Edge case: if playhead is exactly at 0 or at project end
-    if (activeClip == null && project.videoClips.isNotEmpty) {
-      if (currentPos <= project.videoClips.first.startTime) {
-        activeClip = project.videoClips.first;
-      } else if (currentPos >= project.videoClips.last.endTime) {
-        activeClip = project.videoClips.last;
+    if (candidateClips.isNotEmpty) {
+      // Sort by trackIndex descending so higher track (e.g. V2 over V1) overlays lower track
+      candidateClips.sort((a, b) => b.trackIndex.compareTo(a.trackIndex));
+      activeClip = candidateClips.first;
+    } else {
+      // Fallback: nearest clip among visible tracks
+      final visibleClips = project.videoClips
+          .where((c) => !project.hiddenVideoTracks.contains(c.trackIndex))
+          .toList();
+      if (visibleClips.isNotEmpty) {
+        if (currentPos <= visibleClips.first.startTime) {
+          activeClip = visibleClips.first;
+        } else if (currentPos >= visibleClips.last.endTime) {
+          activeClip = visibleClips.last;
+        }
       }
     }
 

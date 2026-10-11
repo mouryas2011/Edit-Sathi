@@ -257,6 +257,232 @@ class ProjectProvider extends ChangeNotifier {
     return true;
   }
 
+  /// Split whatever clip is under the playhead (optionally specifying track index)
+  bool splitClipAtPlayhead(Duration playhead, {int? targetTrackIndex}) {
+    if (_activeProject == null) return false;
+    final candidateClips = _activeProject!.videoClips.where((c) {
+      if (targetTrackIndex != null && c.trackIndex != targetTrackIndex) return false;
+      return playhead > c.startTime && playhead < c.endTime;
+    }).toList();
+
+    if (candidateClips.isEmpty) return false;
+    // Prefer the clip on the highest track (or targetTrackIndex)
+    candidateClips.sort((a, b) => b.trackIndex.compareTo(a.trackIndex));
+    return splitClipAtPosition(candidateClips.first.id, playhead);
+  }
+
+  /// Add a video clip specifically to a target track at a specific timestamp or end of track
+  void addVideoClipToTrack(VideoClipModel clip, {int trackIndex = 0, Duration? startTime}) {
+    if (_activeProject == null) return;
+    _pushHistory();
+
+    final currentClips = List<VideoClipModel>.from(_activeProject!.videoClips);
+    final trackClips = currentClips.where((c) => c.trackIndex == trackIndex).toList();
+
+    Duration start = startTime ?? Duration.zero;
+    if (startTime == null && trackClips.isNotEmpty) {
+      start = trackClips.last.endTime;
+    }
+
+    // Auto-expand track count if needed
+    int trackCount = _activeProject!.videoTrackCount;
+    if (trackIndex >= trackCount) {
+      trackCount = trackIndex + 1;
+    }
+
+    currentClips.add(clip.copyWith(
+      trackIndex: trackIndex,
+      startTime: start,
+    ));
+
+    _activeProject = _activeProject!.copyWith(
+      videoClips: currentClips,
+      videoTrackCount: trackCount,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  /// Add an audio track specifically to a target track at a specific timestamp or end of track
+  void addAudioClipToTrack(AudioTrackModel audio, {int trackIndex = 0, Duration? startTime}) {
+    if (_activeProject == null) return;
+    _pushHistory();
+
+    final currentAudios = List<AudioTrackModel>.from(_activeProject!.audioTracks);
+    final trackAudios = currentAudios.where((a) => a.trackIndex == trackIndex).toList();
+
+    Duration start = startTime ?? Duration.zero;
+    if (startTime == null && trackAudios.isNotEmpty) {
+      start = trackAudios.last.endTime;
+    }
+
+    int trackCount = _activeProject!.audioTrackCount;
+    if (trackIndex >= trackCount) {
+      trackCount = trackIndex + 1;
+    }
+
+    currentAudios.add(audio.copyWith(
+      trackIndex: trackIndex,
+      startTime: start,
+    ));
+
+    _activeProject = _activeProject!.copyWith(
+      audioTracks: currentAudios,
+      audioTrackCount: trackCount,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  /// Move clip to a new start time and optionally change track
+  void moveClip(String clipId, Duration newStartTime, [int? newTrackIndex]) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+
+    _pushHistory();
+    final old = _activeProject!.videoClips[index];
+    final updated = old.copyWith(
+      startTime: newStartTime < Duration.zero ? Duration.zero : newStartTime,
+      trackIndex: newTrackIndex ?? old.trackIndex,
+    );
+
+    final currentClips = List<VideoClipModel>.from(_activeProject!.videoClips);
+    currentClips[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(
+      videoClips: currentClips,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  /// Move audio track to a new start time and optionally change track
+  void moveAudioTrackItem(String audioId, Duration newStartTime, [int? newTrackIndex]) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.audioTracks.indexWhere((a) => a.id == audioId);
+    if (index < 0) return;
+
+    _pushHistory();
+    final old = _activeProject!.audioTracks[index];
+    final updated = old.copyWith(
+      startTime: newStartTime < Duration.zero ? Duration.zero : newStartTime,
+      trackIndex: newTrackIndex ?? old.trackIndex,
+    );
+
+    final currentAudios = List<AudioTrackModel>.from(_activeProject!.audioTracks);
+    currentAudios[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(
+      audioTracks: currentAudios,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  // --- Multi-Track Add & Header State Management ---
+  void addVideoTrack() {
+    if (_activeProject == null) return;
+    _pushHistory();
+    final currentCount = _activeProject!.videoTrackCount;
+    _activeProject = _activeProject!.copyWith(
+      videoTrackCount: (currentCount + 1).clamp(1, 8),
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void addAudioTrackLane() {
+    if (_activeProject == null) return;
+    _pushHistory();
+    final currentCount = _activeProject!.audioTrackCount;
+    _activeProject = _activeProject!.copyWith(
+      audioTrackCount: (currentCount + 1).clamp(1, 8),
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void toggleMuteVideoTrack(int trackIndex) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    final list = List<int>.from(_activeProject!.mutedVideoTracks);
+    if (list.contains(trackIndex)) {
+      list.remove(trackIndex);
+    } else {
+      list.add(trackIndex);
+    }
+    _activeProject = _activeProject!.copyWith(
+      mutedVideoTracks: list,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void toggleHideVideoTrack(int trackIndex) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    final list = List<int>.from(_activeProject!.hiddenVideoTracks);
+    if (list.contains(trackIndex)) {
+      list.remove(trackIndex);
+    } else {
+      list.add(trackIndex);
+    }
+    _activeProject = _activeProject!.copyWith(
+      hiddenVideoTracks: list,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void toggleLockVideoTrack(int trackIndex) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    final list = List<int>.from(_activeProject!.lockedVideoTracks);
+    if (list.contains(trackIndex)) {
+      list.remove(trackIndex);
+    } else {
+      list.add(trackIndex);
+    }
+    _activeProject = _activeProject!.copyWith(
+      lockedVideoTracks: list,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void toggleMuteAudioTrack(int trackIndex) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    final list = List<int>.from(_activeProject!.mutedAudioTracks);
+    if (list.contains(trackIndex)) {
+      list.remove(trackIndex);
+    } else {
+      list.add(trackIndex);
+    }
+    _activeProject = _activeProject!.copyWith(
+      mutedAudioTracks: list,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void toggleLockAudioTrack(int trackIndex) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    final list = List<int>.from(_activeProject!.lockedAudioTracks);
+    if (list.contains(trackIndex)) {
+      list.remove(trackIndex);
+    } else {
+      list.add(trackIndex);
+    }
+    _activeProject = _activeProject!.copyWith(
+      lockedAudioTracks: list,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
   // --- Text Overlay Management ---
   void addTextOverlay(TextOverlayModel text) {
     if (_activeProject == null) return;

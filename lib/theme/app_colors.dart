@@ -13,6 +13,7 @@ class AppColors {
   static const Color textTrack = Color(0xFF8B5CF6);
   static const Color textTrackBorder = Color(0xFFA78BFA);
   static const Color audioTrack = Color(0xFF10B981);
+  static const Color audioTrackBorder = Color(0xFF34D399);
   static const Color audioTrackWaveform = Color(0xFF34D399);
 
   // Dark Theme Editor Canvas Colors

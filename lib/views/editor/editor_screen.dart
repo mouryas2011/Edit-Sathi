@@ -5,6 +5,7 @@ import '../../providers/timeline_provider.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/editor_top_bar.dart';
 import 'widgets/video_preview_canvas.dart';
+import 'widgets/timeline_transport_controls.dart';
 import 'widgets/multi_track_timeline.dart';
 import 'widgets/editor_bottom_toolbar.dart';
 
@@ -90,7 +91,10 @@ class _EditorScreenState extends State<EditorScreen> {
                   child: VideoPreviewCanvas(),
                 ),
 
-                // 3. Multi-Track Timeline (Video strip, text pill, audio waveform)
+                // 2.5. Dedicated Transport Controls (Timecode, Undo/Redo, Big Play/Pause, Split, Zoom, + Track)
+                const TimelineTransportControls(),
+
+                // 3. Multi-Track Timeline (Adobe Premiere Pro stacked tracks)
                 const Expanded(
                   flex: 4,
                   child: MultiTrackTimeline(),

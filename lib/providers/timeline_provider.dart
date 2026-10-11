@@ -18,12 +18,15 @@ class TimelineProvider extends ChangeNotifier {
   SelectedTrackType _selectedTrack = SelectedTrackType.none;
   String? _selectedItemId;
 
+  bool _isPlayerDriving = false;
+
   Duration get currentPosition => _currentPosition;
   Duration get totalDuration => _totalDuration;
   bool get isPlaying => _isPlaying;
   double get zoomLevel => _zoomLevel;
   SelectedTrackType get selectedTrack => _selectedTrack;
   String? get selectedItemId => _selectedItemId;
+  bool get isPlayerDriving => _isPlayerDriving;
 
   void setTotalDuration(Duration duration) {
     if (_totalDuration != duration) {
@@ -35,6 +38,31 @@ class TimelineProvider extends ChangeNotifier {
     }
   }
 
+  void setPlayerDriving(bool driving) {
+    _isPlayerDriving = driving;
+    if (driving && _isPlaying) {
+      // Let the video player clock drive smoothly
+      _playbackTimer?.cancel();
+      _playbackTimer = null;
+    } else if (!driving && _isPlaying && _playbackTimer == null) {
+      _startFallbackTimer();
+    }
+  }
+
+  /// Called smoothly by active video controller while playing
+  void updatePositionFromPlayback(Duration position) {
+    if (position < Duration.zero) {
+      _currentPosition = Duration.zero;
+    } else if (position >= _totalDuration) {
+      _currentPosition = _totalDuration;
+      pause();
+      return;
+    } else {
+      _currentPosition = position;
+    }
+    notifyListeners();
+  }
+
   void seekTo(Duration position) {
     if (position < Duration.zero) {
       _currentPosition = Duration.zero;
@@ -44,6 +72,14 @@ class TimelineProvider extends ChangeNotifier {
       _currentPosition = position;
     }
     notifyListeners();
+  }
+
+  void stepForward({Duration step = const Duration(seconds: 1)}) {
+    seekTo(_currentPosition + step);
+  }
+
+  void stepBackward({Duration step = const Duration(seconds: 1)}) {
+    seekTo(_currentPosition - step);
   }
 
   void togglePlayPause() {
@@ -62,6 +98,12 @@ class TimelineProvider extends ChangeNotifier {
     _isPlaying = true;
     notifyListeners();
 
+    if (!_isPlayerDriving) {
+      _startFallbackTimer();
+    }
+  }
+
+  void _startFallbackTimer() {
     _playbackTimer?.cancel();
     _playbackTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
       final nextMs = _currentPosition.inMilliseconds + 33;
@@ -87,6 +129,9 @@ class TimelineProvider extends ChangeNotifier {
     _zoomLevel = zoom.clamp(0.5, 3.0);
     notifyListeners();
   }
+
+  void zoomIn() => setZoomLevel((_zoomLevel + 0.25).clamp(0.5, 3.0));
+  void zoomOut() => setZoomLevel((_zoomLevel - 0.25).clamp(0.5, 3.0));
 
   void selectItem(SelectedTrackType trackType, String? itemId) {
     _selectedTrack = trackType;

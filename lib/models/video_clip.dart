@@ -32,6 +32,7 @@ class VideoClipModel {
   final VideoFilterPreset filter;
   final TransitionType transition;
   final String? customThumbnail;
+  final int trackIndex; // 0 for V1, 1 for V2, 2 for V3...
 
   const VideoClipModel({
     required this.id,
@@ -49,6 +50,7 @@ class VideoClipModel {
     this.filter = VideoFilterPreset.none,
     this.transition = TransitionType.none,
     this.customThumbnail,
+    this.trackIndex = 0,
   });
 
   Duration get endTime => startTime + duration;
@@ -69,6 +71,7 @@ class VideoClipModel {
     VideoFilterPreset? filter,
     TransitionType? transition,
     String? customThumbnail,
+    int? trackIndex,
   }) {
     return VideoClipModel(
       id: id ?? this.id,
@@ -86,6 +89,7 @@ class VideoClipModel {
       filter: filter ?? this.filter,
       transition: transition ?? this.transition,
       customThumbnail: customThumbnail ?? this.customThumbnail,
+      trackIndex: trackIndex ?? this.trackIndex,
     );
   }
 
@@ -106,6 +110,7 @@ class VideoClipModel {
       'filter': filter.name,
       'transition': transition.name,
       'customThumbnail': customThumbnail,
+      'trackIndex': trackIndex,
     };
   }
 
@@ -132,6 +137,7 @@ class VideoClipModel {
         orElse: () => TransitionType.none,
       ),
       customThumbnail: json['customThumbnail'] as String?,
+      trackIndex: json['trackIndex'] as int? ?? 0,
     );
   }
 }
