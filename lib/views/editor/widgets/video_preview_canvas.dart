@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../../models/video_clip.dart';
 import '../../../../providers/timeline_provider.dart';
 import '../../../../providers/project_provider.dart';
+import '../../../../services/media_picker_service.dart';
 import '../../../../theme/app_colors.dart';
 import 'sheets/text_edit_sheet.dart';
 
@@ -84,6 +86,117 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
     }
   }
 
+  Future<VideoPlayerController?> _resolveAndCreateController(String path) async {
+    try {
+      if (kIsWeb) {
+        return VideoPlayerController.networkUrl(Uri.parse(path));
+      }
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        return VideoPlayerController.networkUrl(Uri.parse(path));
+      }
+      if (path.startsWith('assets/')) {
+        return VideoPlayerController.asset(path);
+      }
+      if (path.startsWith('file://')) {
+        final f = File(Uri.parse(path).toFilePath());
+        if (await f.exists()) return VideoPlayerController.file(f);
+      }
+      if (path.startsWith('content://')) {
+        return VideoPlayerController.contentUri(Uri.parse(path));
+      }
+
+      // 1. Direct file path check
+      final file = File(path);
+      if (await file.exists()) {
+        return VideoPlayerController.file(file);
+      }
+
+      // 2. Search imported_videos sandbox directory for matching filename
+      final appDir = await getApplicationDocumentsDirectory();
+      final videosDir = Directory('${appDir.path}/imported_videos');
+      if (await videosDir.exists()) {
+        final basename = path.split(RegExp(r'[/\\]')).last;
+        final list = videosDir.listSync().whereType<File>();
+        final match = list.where((f) => f.path.endsWith(basename) || f.path.contains(basename)).firstOrNull;
+        if (match != null && await match.exists()) {
+          return VideoPlayerController.file(match);
+        }
+      }
+
+      // 3. Search cache directory
+      final cacheDir = await getTemporaryDirectory();
+      final cacheFile = File('${cacheDir.path}/${path.split(RegExp(r'[/\\]')).last}');
+      if (await cacheFile.exists()) {
+        return VideoPlayerController.file(cacheFile);
+      }
+
+      // 4. Try as content URI if it has any valid URI structure
+      final uri = Uri.tryParse(path);
+      if (uri != null && uri.hasScheme) {
+        return VideoPlayerController.contentUri(uri);
+      }
+    } catch (e) {
+      debugPrint('Error finding video for path $path: $e');
+    }
+    return null;
+  }
+
+  Future<void> _setupClipController(VideoClipModel clip, Duration timelinePos, bool isPlaying) async {
+    if (_isControllerInitializing) return;
+    _isControllerInitializing = true;
+
+    final old = _controller;
+    _controller = null;
+    await old?.dispose();
+
+    try {
+      final newController = await _resolveAndCreateController(clip.sourcePath);
+      if (newController != null) {
+        await newController.initialize().timeout(
+          const Duration(seconds: 15),
+          onTimeout: () => throw TimeoutException('Player initialize timeout (15s)'),
+        );
+
+        if (!mounted) {
+          await newController.dispose();
+          return;
+        }
+
+        newController.setLooping(false);
+        await newController.setVolume(clip.isMuted ? 0.0 : clip.volume);
+        await newController.setPlaybackSpeed(clip.speed);
+
+        // Seek to initial offset
+        final localOffset = _calculateClipLocalPosition(clip, timelinePos);
+        await newController.seekTo(localOffset);
+
+        if (isPlaying) {
+          await newController.play();
+        }
+
+        newController.addListener(() {
+          if (mounted) setState(() {});
+        });
+
+        _controller = newController;
+        _loadedClipId = clip.id;
+        _loadedClipPath = clip.sourcePath;
+      } else {
+        debugPrint('Could not create video controller for path: ${clip.sourcePath}');
+        _loadedClipId = null;
+        _loadedClipPath = null;
+      }
+    } catch (e) {
+      debugPrint('Video controller setup fallback for ${clip.sourcePath}: $e');
+      _controller = null;
+      _loadedClipId = null;
+      _loadedClipPath = null;
+    } finally {
+      _isControllerInitializing = false;
+      if (mounted) setState(() {});
+    }
+  }
+
   Future<void> _updatePlayerForClip(
     VideoClipModel? clip,
     Duration timelinePos,
@@ -102,64 +215,8 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
     }
 
     // Clip changed or needs initialization
-    if (_loadedClipId != clip.id || _loadedClipPath != clip.sourcePath) {
-      if (_isControllerInitializing) return;
-      _isControllerInitializing = true;
-
-      final old = _controller;
-      _controller = null;
-      await old?.dispose();
-
-      VideoPlayerController? newController;
-      try {
-        if (kIsWeb) {
-          newController = VideoPlayerController.networkUrl(Uri.parse(clip.sourcePath));
-        } else {
-          final file = File(clip.sourcePath);
-          if (await file.exists()) {
-            newController = VideoPlayerController.file(file);
-          } else if (clip.sourcePath.startsWith('http://') ||
-              clip.sourcePath.startsWith('https://')) {
-            newController = VideoPlayerController.networkUrl(Uri.parse(clip.sourcePath));
-          } else if (clip.sourcePath.startsWith('assets/')) {
-            newController = VideoPlayerController.asset(clip.sourcePath);
-          }
-        }
-
-        if (newController != null) {
-          await newController.initialize().timeout(
-            const Duration(seconds: 4),
-            onTimeout: () => throw TimeoutException('Player initialize timeout'),
-          );
-
-          if (!mounted) {
-            await newController.dispose();
-            return;
-          }
-
-          newController.setLooping(false);
-          await newController.setVolume(clip.isMuted ? 0.0 : clip.volume);
-          await newController.setPlaybackSpeed(clip.speed);
-
-          // Seek to initial offset
-          final localOffset = _calculateClipLocalPosition(clip, timelinePos);
-          await newController.seekTo(localOffset);
-
-          if (isPlaying) {
-            await newController.play();
-          }
-
-          _controller = newController;
-          _loadedClipId = clip.id;
-          _loadedClipPath = clip.sourcePath;
-        }
-      } catch (e) {
-        debugPrint('Video controller setup fallback: $e');
-        _controller = null;
-      } finally {
-        _isControllerInitializing = false;
-        if (mounted) setState(() {});
-      }
+    if (_loadedClipId != clip.id || _loadedClipPath != clip.sourcePath || (_controller == null && !_isControllerInitializing)) {
+      await _setupClipController(clip, timelinePos, isPlaying);
       return;
     }
 
@@ -315,7 +372,10 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
                         ),
                     child: Center(
                       child: AspectRatio(
-                        aspectRatio: _controller!.value.aspectRatio,
+                        aspectRatio: (_controller!.value.size.width > 0 &&
+                                _controller!.value.size.height > 0)
+                            ? _controller!.value.aspectRatio
+                            : project.aspectRatio.ratio,
                         child: VideoPlayer(_controller!),
                       ),
                     ),
@@ -572,6 +632,39 @@ class _VideoPreviewCanvasState extends State<VideoPreviewCanvas> {
                           fontSize: 11,
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white.withValues(alpha: 0.15),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: const BorderSide(color: Colors.white38),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      ),
+                      icon: const Icon(Icons.video_library_rounded, size: 16),
+                      label: const Text(
+                        'Select / Re-link Video',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      onPressed: () async {
+                        final picked = await MediaPickerService.pickVideo();
+                        if (picked != null && mounted) {
+                          final updated = activeClip.copyWith(
+                            sourcePath: picked.path,
+                            duration: picked.duration,
+                            sourceDuration: picked.duration,
+                          );
+                          context.read<ProjectProvider>().updateVideoClip(updated);
+                          setState(() {
+                            _loadedClipId = null;
+                            _loadedClipPath = null;
+                          });
+                        }
+                      },
                     ),
                   ],
                 ],

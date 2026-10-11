@@ -58,29 +58,39 @@ class MediaPickerService {
     return true;
   }
 
-  /// Safely resolves a PlatformFile to an accessible local filesystem path.
-  /// If the file only exists as a content URI or stream, copies its bytes to the app's cache directory.
+  /// Safely resolves a PlatformFile to an accessible local filesystem path in the app sandbox.
   static Future<String?> resolvePlatformFilePath(PlatformFile file) async {
-    if (file.path != null && file.path!.isNotEmpty) {
-      if (kIsWeb) return file.path;
-      final f = File(file.path!);
-      if (await f.exists()) {
-        return file.path;
-      }
-    }
+    if (kIsWeb) return file.path;
 
-    // Attempt to copy bytes to cache for Android content:// or SAF streams
     try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final videosDir = Directory('${appDir.path}/imported_videos');
+      if (!await videosDir.exists()) {
+        await videosDir.create(recursive: true);
+      }
+
+      final safeName = file.name.replaceAll(RegExp(r'[^\w\.-]'), '_');
+      final targetFile = File('${videosDir.path}/${DateTime.now().millisecondsSinceEpoch}_$safeName');
+
+      // 1. If local file path exists and is accessible
+      if (file.path != null && file.path!.isNotEmpty) {
+        final src = File(file.path!);
+        if (await src.exists()) {
+          await src.copy(targetFile.path);
+          if (await targetFile.exists() && await targetFile.length() > 0) {
+            return targetFile.path;
+          }
+        }
+      }
+
+      // 2. Read bytes on demand
       final bytes = await file.readAsBytes();
       if (bytes.isNotEmpty) {
-        final tempDir = await getTemporaryDirectory();
-        final sanitized = file.name.replaceAll(RegExp(r'[^\w\.-]'), '_');
-        final target = File('${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}_$sanitized');
-        await target.writeAsBytes(bytes, flush: true);
-        return target.path;
+        await targetFile.writeAsBytes(bytes, flush: true);
+        return targetFile.path;
       }
     } catch (e) {
-      debugPrint('Error reading/caching PlatformFile: $e');
+      debugPrint('Error resolving PlatformFile: $e');
     }
 
     return file.path;
@@ -119,7 +129,7 @@ class MediaPickerService {
     return null;
   }
 
-  /// Pick a video using ImagePicker with automatic FilePicker fallback
+  /// Pick a video using ImagePicker with automatic FilePicker fallback and sandbox persistence
   static Future<PickedVideoInfo?> pickVideo({
     ImageSource source = ImageSource.gallery,
   }) async {
@@ -134,9 +144,53 @@ class MediaPickerService {
         maxDuration: const Duration(minutes: 60),
       );
       if (xfile != null) {
-        pickedPath = xfile.path;
         pickedName = xfile.name;
-        sizeBytes = await xfile.length();
+        try {
+          sizeBytes = await xfile.length();
+        } catch (_) {}
+
+        String? sandboxedPath;
+        if (!kIsWeb) {
+          try {
+            final appDir = await getApplicationDocumentsDirectory();
+            final videosDir = Directory('${appDir.path}/imported_videos');
+            if (!await videosDir.exists()) {
+              await videosDir.create(recursive: true);
+            }
+            final safeName = (pickedName.isNotEmpty ? pickedName : 'imported_video.mp4')
+                .replaceAll(RegExp(r'[^\w\.-]'), '_');
+            final targetFile = File('${videosDir.path}/${DateTime.now().millisecondsSinceEpoch}_$safeName');
+
+            // Fast copy if source exists on disk
+            if (xfile.path.isNotEmpty) {
+              final src = File(xfile.path);
+              if (await src.exists()) {
+                await src.copy(targetFile.path);
+                if (await targetFile.exists() && await targetFile.length() > 0) {
+                  sandboxedPath = targetFile.path;
+                  debugPrint('Copied video to app sandbox: ${targetFile.path}');
+                }
+              }
+            }
+
+            // Stream fallback
+            if (sandboxedPath == null) {
+              final bytes = await xfile.readAsBytes();
+              if (bytes.isNotEmpty) {
+                await targetFile.writeAsBytes(bytes, flush: true);
+                if (await targetFile.exists() && await targetFile.length() > 0) {
+                  sandboxedPath = targetFile.path;
+                  debugPrint('Wrote video bytes to app sandbox: ${targetFile.path}');
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error persisting video into sandbox: $e');
+          }
+        }
+
+        // Never return a bare filename; always use sandboxedPath or xfile.path
+        pickedPath = sandboxedPath ?? (xfile.path.isNotEmpty ? xfile.path : null);
       }
     } catch (e) {
       debugPrint('ImagePicker failed or cancelled: $e');
@@ -182,43 +236,76 @@ class MediaPickerService {
     try {
       if (kIsWeb) {
         controller = VideoPlayerController.networkUrl(Uri.parse(path));
+      } else if (path.startsWith('content://')) {
+        controller = VideoPlayerController.contentUri(Uri.parse(path));
+      } else if (path.startsWith('file://')) {
+        controller = VideoPlayerController.file(File(Uri.parse(path).toFilePath()));
+      } else if (path.startsWith('http://') || path.startsWith('https://')) {
+        controller = VideoPlayerController.networkUrl(Uri.parse(path));
+      } else if (path.startsWith('assets/')) {
+        controller = VideoPlayerController.asset(path);
       } else {
-        controller = VideoPlayerController.file(File(path));
-      }
-
-      await controller.initialize().timeout(
-        const Duration(seconds: 4),
-        onTimeout: () => throw TimeoutException('Video probe timeout'),
-      );
-
-      final d = controller.value.duration;
-      if (d > Duration.zero) {
-        duration = d;
-      }
-
-      final size = controller.value.size;
-      if (size.width > 0 && size.height > 0) {
-        final ratio = size.width / size.height;
-        if (ratio < 0.7) {
-          aspectPreset = AspectRatioPreset.vertical9x16; // 9:16 (0.5625)
-        } else if (ratio < 0.9) {
-          aspectPreset = AspectRatioPreset.portrait4x5; // 4:5 (0.8)
-        } else if (ratio < 1.25) {
-          aspectPreset = AspectRatioPreset.square1x1; // 1:1 (1.0)
-        } else if (ratio < 2.0) {
-          aspectPreset = AspectRatioPreset.horizontal16x9; // 16:9 (1.777)
+        final f = File(path);
+        if (await f.exists()) {
+          controller = VideoPlayerController.file(f);
         } else {
-          aspectPreset = AspectRatioPreset.cinematic21x9; // 21:9 (2.333)
+          final uri = Uri.tryParse(path);
+          if (uri != null && uri.hasScheme) {
+            controller = VideoPlayerController.contentUri(uri);
+          } else {
+            // Search sandbox
+            final appDir = await getApplicationDocumentsDirectory();
+            final videosDir = Directory('${appDir.path}/imported_videos');
+            final base = path.split(RegExp(r'[/\\]')).last;
+            if (await videosDir.exists()) {
+              final match = videosDir
+                  .listSync()
+                  .whereType<File>()
+                  .where((x) => x.path.endsWith(base) || x.path.contains(base))
+                  .firstOrNull;
+              if (match != null) {
+                controller = VideoPlayerController.file(match);
+              }
+            }
+          }
+        }
+      }
+
+      if (controller != null) {
+        await controller.initialize().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Video probe timeout'),
+        );
+
+        final d = controller.value.duration;
+        if (d > Duration.zero) {
+          duration = d;
         }
 
-        // Determine resolution
-        final maxDimension = size.width > size.height ? size.width : size.height;
-        if (maxDimension >= 2500) {
-          resolutionPreset = ResolutionPreset.res4K;
-        } else if (maxDimension >= 1000) {
-          resolutionPreset = ResolutionPreset.res1080p;
-        } else {
-          resolutionPreset = ResolutionPreset.res720p;
+        final size = controller.value.size;
+        if (size.width > 0 && size.height > 0) {
+          final ratio = size.width / size.height;
+          if (ratio < 0.7) {
+            aspectPreset = AspectRatioPreset.vertical9x16; // 9:16 (0.5625)
+          } else if (ratio < 0.9) {
+            aspectPreset = AspectRatioPreset.portrait4x5; // 4:5 (0.8)
+          } else if (ratio < 1.25) {
+            aspectPreset = AspectRatioPreset.square1x1; // 1:1 (1.0)
+          } else if (ratio < 2.0) {
+            aspectPreset = AspectRatioPreset.horizontal16x9; // 16:9 (1.777)
+          } else {
+            aspectPreset = AspectRatioPreset.cinematic21x9; // 21:9 (2.333)
+          }
+
+          // Determine resolution
+          final maxDimension = size.width > size.height ? size.width : size.height;
+          if (maxDimension >= 2500) {
+            resolutionPreset = ResolutionPreset.res4K;
+          } else if (maxDimension >= 1000) {
+            resolutionPreset = ResolutionPreset.res1080p;
+          } else {
+            resolutionPreset = ResolutionPreset.res720p;
+          }
         }
       }
     } catch (e) {

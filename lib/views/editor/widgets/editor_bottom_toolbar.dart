@@ -8,6 +8,9 @@ import 'sheets/audio_picker_sheet.dart';
 import 'sheets/filter_picker_sheet.dart';
 import 'sheets/aspect_ratio_sheet.dart';
 import 'sheets/speed_sheet.dart';
+import 'sheets/ai_captions_sheet.dart';
+import 'sheets/ai_tools_sheet.dart';
+import '../../../../services/ai_service.dart';
 
 class EditorBottomToolbar extends StatelessWidget {
   const EditorBottomToolbar({super.key});
@@ -192,20 +195,64 @@ class EditorBottomToolbar extends StatelessWidget {
 
           // 5. Captions
           _ToolbarItem(
-            icon: Icons.closed_caption_outlined,
+            icon: Icons.closed_caption_rounded,
             label: 'Captions',
             onTap: () {
-              projectProvider.applyAutoCaptions();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('✨ AI Captions generated from speech track!'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
+              if (project != null) {
+                AiCaptionsSheet.show(
+                  context: context,
+                  project: project,
+                  onApply: (captions, style) {
+                    projectProvider.applyCustomCaptions(captions, style);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('✨ Subtitles applied to timeline!'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                );
+              }
             },
           ),
 
-          // 6. More
+          // 6. AI Tools Suite
+          _ToolbarItem(
+            icon: Icons.auto_awesome_rounded,
+            label: 'AI Tools',
+            onTap: () {
+              if (project != null) {
+                AiToolsSheet.show(
+                  context: context,
+                  project: project,
+                  onSilenceCutApplied: () {
+                    final silences = AiService.detectSilenceIntervals(project);
+                    projectProvider.applySilenceCuts(silences);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('✂️ Dead air removed from clips!'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  onAudioNormalized: () {
+                    projectProvider.applyAudioNormalization();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('🔊 Master audio normalized (-16 LUFS)!'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  onHighlightSelected: (start, dur) {
+                    timelineProvider.seekTo(start);
+                  },
+                );
+              }
+            },
+          ),
+
+          // 7. More
           _ToolbarItem(
             icon: Icons.more_horiz_rounded,
             label: 'More',

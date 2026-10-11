@@ -78,40 +78,47 @@ jobs:
             exit 1
           fi
 
+          cp "$APK_PATH" release-output/Edit-Sathi-v1.0.1.apk
           cp "$APK_PATH" release-output/Edit-Sathi-v1.0.0.apk
-          echo "APK successfully prepared:"
-          ls -lh release-output/Edit-Sathi-v1.0.0.apk
+          cp "$APK_PATH" release-output/Edit-Sathi-release.apk
+          echo "APKs successfully prepared:"
+          ls -lh release-output/
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Edit-Sathi-v1.0.0-APK
-          path: release-output/Edit-Sathi-v1.0.0.apk
+          name: Edit-Sathi-v1.0.1-APK
+          path: release-output/Edit-Sathi-v1.0.1.apk
           retention-days: 30
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         with:
-          tag_name: v1.0.0
-          name: "Edit Sathi v1.0.0 Release"
+          tag_name: v1.0.1
+          name: "Edit Sathi v1.0.1 Release"
           body: |
-            ## 🎬 Edit Sathi - Video Editing Application (Android APK)
+            ## 🎬 Edit Sathi - Video Editing Application (Android APK v1.0.1)
 
-            ### ✨ Highlights & Features
-            - **Multi-Track Timeline**: Professional multi-layer editing for Video, Audio, and Text tracks
-            - **Real-Time Video Preview Canvas**: Scrubbing, seeking, playhead sync, and aspect ratio switcher (16:9, 9:16, 1:1, 4:5, 21:9)
-            - **Cinematic Color Grading & Filters**: Cinematic, Vintage, Cyberpunk, Black & White, Warm, Cool, Sepia, Vaporwave
-            - **Speed Control & Ramping**: 0.25x to 4x smooth speed adjustment
-            - **Typography & Text Titles**: Styled text overlays with customizable fonts, colors, and alignments
-            - **Export Engine**: 720p HD, 1080p Full HD, and 4K Ultra HD at 30fps/60fps with export progress
-            - **Templates & Project Management**: Pre-built social templates and local auto-save drafts
+            ### 🚀 What's New in v1.0.1
+            - **Fixed Video Import & Playback Canvas**: Videos now decode, render, and scrub directly on the preview canvas without fallback to static gradient.
+            - **Private Sandbox Storage**: Imported videos are securely persisted into the app documents sandbox, eliminating Android 13/14 Scoped Storage permission issues.
+            - **100% On-Device AI Tools Suite**:
+              - 📝 Auto Captions (Hinglish, Hindi, English, Spanish) with instant .SRT export
+              - ✂️ Dead-air / Silence Jump-Cutter
+              - 🌟 Key Highlight Pacing Finder
+              - 🖼️ AI Thumbnail Quality Ranker
+              - 🔊 Audio Doctor LUFS Loudness Diagnostics & Normalizer
+            - **Hardware Acceleration & Large Heap**: Configured for smooth decoding of 1080p and 4K footage.
 
             ### 📲 How to Install
-            1. Download `Edit-Sathi-v1.0.0.apk` below directly to your Android device.
+            1. Download `Edit-Sathi-v1.0.1.apk` below directly to your Android device.
             2. Tap the file to install (Enable *"Install from Unknown Sources"* if prompted).
-            3. Open Edit Sathi and start editing videos!
-          files: release-output/Edit-Sathi-v1.0.0.apk
+            3. Open Edit Sathi and start editing!
+          files: |
+            release-output/Edit-Sathi-v1.0.1.apk
+            release-output/Edit-Sathi-v1.0.0.apk
+            release-output/Edit-Sathi-release.apk
           draft: false
           prerelease: false
         env:

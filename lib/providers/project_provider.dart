@@ -341,7 +341,39 @@ class ProjectProvider extends ChangeNotifier {
   void applyAutoCut() {
     if (_activeProject == null) return;
     _pushHistory();
-    _activeProject = AiService.applyAutoCut(_activeProject!);
+    final silences = AiService.detectSilenceIntervals(_activeProject!);
+    _activeProject = AiService.applySilenceJumpCuts(
+      project: _activeProject!,
+      selectedSilences: silences,
+    );
+    _saveAndNotify();
+  }
+
+  void applyCustomCaptions(List<AiCaptionSegment> captions, CaptionStylePreset style) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    _activeProject = AiService.applyCaptionsToProject(
+      project: _activeProject!,
+      captions: captions,
+      style: style,
+    );
+    _saveAndNotify();
+  }
+
+  void applySilenceCuts(List<SilenceSection> silences) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    _activeProject = AiService.applySilenceJumpCuts(
+      project: _activeProject!,
+      selectedSilences: silences,
+    );
+    _saveAndNotify();
+  }
+
+  void applyAudioNormalization() {
+    if (_activeProject == null) return;
+    _pushHistory();
+    _activeProject = AiService.normalizeAudio(_activeProject!);
     _saveAndNotify();
   }
 
