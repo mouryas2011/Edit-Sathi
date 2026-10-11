@@ -6,6 +6,8 @@ enum SelectedTrackType {
   video,
   text,
   audio,
+  shape,
+  adjustment,
 }
 
 class TimelineProvider extends ChangeNotifier {

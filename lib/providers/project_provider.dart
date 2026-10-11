@@ -4,6 +4,8 @@ import '../models/project.dart';
 import '../models/video_clip.dart';
 import '../models/text_overlay.dart';
 import '../models/audio_track.dart';
+import '../models/shape_overlay.dart';
+import '../models/adjustment_layer.dart';
 import '../models/template.dart';
 import '../services/storage_service.dart';
 import '../services/ai_service.dart';
@@ -196,6 +198,68 @@ class ProjectProvider extends ChangeNotifier {
     _saveAndNotify();
   }
 
+  void updateClipTransform(
+    String clipId, {
+    double? scale,
+    double? rotation,
+    double? positionX,
+    double? positionY,
+    bool? flipHorizontal,
+    bool? flipVertical,
+  }) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+
+    final old = _activeProject!.videoClips[index];
+    final updated = old.copyWith(
+      scale: scale ?? old.scale,
+      rotation: rotation ?? old.rotation,
+      positionX: positionX ?? old.positionX,
+      positionY: positionY ?? old.positionY,
+      flipHorizontal: flipHorizontal ?? old.flipHorizontal,
+      flipVertical: flipVertical ?? old.flipVertical,
+    );
+
+    final currentClips = List<VideoClipModel>.from(_activeProject!.videoClips);
+    currentClips[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(
+      videoClips: currentClips,
+      updatedAt: DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  void resetClipTransform(String clipId) {
+    updateClipTransform(
+      clipId,
+      scale: 1.0,
+      rotation: 0.0,
+      positionX: 0.0,
+      positionY: 0.0,
+      flipHorizontal: false,
+      flipVertical: false,
+    );
+    _saveAndNotify();
+  }
+
+  void updateClipSpeed(String clipId, double speed) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+    final clip = _activeProject!.videoClips[index];
+    updateVideoClip(clip.copyWith(speed: speed));
+  }
+
+  void updateClipFilter(String clipId, VideoFilterPreset filter) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+    final clip = _activeProject!.videoClips[index];
+    updateVideoClip(clip.copyWith(filter: filter));
+  }
+
   void removeVideoClip(String clipId) {
     if (_activeProject == null) return;
     _pushHistory();
@@ -211,6 +275,132 @@ class ProjectProvider extends ChangeNotifier {
 
     _activeProject = _activeProject!.copyWith(
       videoClips: reorderedClips,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  /// Move a video clip along the timeline (and optionally between video tracks)
+  void moveVideoClip(String clipId, Duration newStartTime, {int? newTrackIndex}) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+
+    final old = _activeProject!.videoClips[index];
+    final safeStart = newStartTime < Duration.zero ? Duration.zero : newStartTime;
+    final targetTrack = newTrackIndex ?? old.trackIndex;
+
+    int trackCount = _activeProject!.videoTrackCount;
+    if (targetTrack >= trackCount) {
+      trackCount = targetTrack + 1;
+    }
+
+    final updated = old.copyWith(
+      startTime: safeStart,
+      trackIndex: targetTrack,
+    );
+
+    final clips = List<VideoClipModel>.from(_activeProject!.videoClips);
+    clips[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(
+      videoClips: clips,
+      videoTrackCount: trackCount,
+      updatedAt: DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  /// Commit the moved clip position to history and persistent storage
+  void commitVideoClipMove(String clipId) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    _saveAndNotify();
+  }
+
+  /// Trim the in-point (start) of a video clip interactively
+  void trimVideoClipStart(String clipId, Duration delta) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+
+    final clip = _activeProject!.videoClips[index];
+    final newTrimStart = clip.trimStart + delta;
+    final newDuration = clip.duration - delta;
+
+    if (newDuration < const Duration(milliseconds: 200) || newTrimStart < Duration.zero) {
+      return;
+    }
+
+    final newStartTime = clip.startTime + delta;
+    if (newStartTime < Duration.zero) return;
+
+    final updated = clip.copyWith(
+      startTime: newStartTime,
+      duration: newDuration,
+      trimStart: newTrimStart,
+    );
+
+    final clips = List<VideoClipModel>.from(_activeProject!.videoClips);
+    clips[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(
+      videoClips: clips,
+      updatedAt: DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  /// Trim the out-point (end) of a video clip interactively
+  void trimVideoClipEnd(String clipId, Duration newDuration) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+
+    final clip = _activeProject!.videoClips[index];
+    final clampedDuration = newDuration < const Duration(milliseconds: 200)
+        ? const Duration(milliseconds: 200)
+        : newDuration;
+
+    final maxAvail = clip.sourceDuration - clip.trimStart;
+    final safeDuration = (clip.sourceDuration > Duration.zero && clampedDuration > maxAvail)
+        ? maxAvail
+        : clampedDuration;
+
+    final updated = clip.copyWith(
+      duration: safeDuration,
+      trimEnd: (clip.sourceDuration > safeDuration) ? (clip.sourceDuration - clip.trimStart - safeDuration) : Duration.zero,
+    );
+
+    final clips = List<VideoClipModel>.from(_activeProject!.videoClips);
+    clips[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(
+      videoClips: clips,
+      updatedAt: DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  /// Duplicate a video clip and place it directly adjacent to it
+  void duplicateVideoClip(String clipId) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.videoClips.indexWhere((c) => c.id == clipId);
+    if (index < 0) return;
+
+    _pushHistory();
+    final original = _activeProject!.videoClips[index];
+    final duplicated = original.copyWith(
+      id: _uuid.v4(),
+      title: '${original.title} (Copy)',
+      startTime: original.endTime,
+    );
+
+    final clips = List<VideoClipModel>.from(_activeProject!.videoClips);
+    clips.insert(index + 1, duplicated);
+
+    _activeProject = _activeProject!.copyWith(
+      videoClips: clips,
       updatedAt: DateTime.now(),
     );
     _saveAndNotify();
@@ -380,6 +570,122 @@ class ProjectProvider extends ChangeNotifier {
     _saveAndNotify();
   }
 
+  void moveAudioClip(String audioId, Duration newStartTime, {int? newTrackIndex}) {
+    moveAudioTrackItem(audioId, newStartTime, newTrackIndex);
+  }
+
+  void trimAudioClip(String audioId, Duration newDuration) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.audioTracks.indexWhere((a) => a.id == audioId);
+    if (index < 0) return;
+
+    final old = _activeProject!.audioTracks[index];
+    final safeDuration = newDuration < const Duration(milliseconds: 300)
+        ? const Duration(milliseconds: 300)
+        : newDuration;
+
+    final updated = old.copyWith(duration: safeDuration);
+    final audios = List<AudioTrackModel>.from(_activeProject!.audioTracks);
+    audios[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(
+      audioTracks: audios,
+      updatedAt: DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  void commitAudioClipMove(String audioId) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    _saveAndNotify();
+  }
+
+  void trimAudioClipStart(String audioId, Duration delta) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.audioTracks.indexWhere((a) => a.id == audioId);
+    if (index < 0) return;
+
+    final old = _activeProject!.audioTracks[index];
+    final newDuration = old.duration - delta;
+    if (newDuration < const Duration(milliseconds: 300)) return;
+
+    final newStartTime = old.startTime + delta;
+    if (newStartTime < Duration.zero) return;
+
+    final updated = old.copyWith(
+      startTime: newStartTime,
+      duration: newDuration,
+    );
+    final audios = List<AudioTrackModel>.from(_activeProject!.audioTracks);
+    audios[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(
+      audioTracks: audios,
+      updatedAt: DateTime.now(),
+    );
+    notifyListeners();
+  }
+
+  bool splitAudioClipAtPosition(String audioId, Duration timelinePos) {
+    if (_activeProject == null) return false;
+    final index = _activeProject!.audioTracks.indexWhere((a) => a.id == audioId);
+    if (index < 0) return false;
+
+    final targetAudio = _activeProject!.audioTracks[index];
+    if (timelinePos <= targetAudio.startTime || timelinePos >= targetAudio.endTime) {
+      return false;
+    }
+
+    _pushHistory();
+    final firstDuration = timelinePos - targetAudio.startTime;
+    final secondDuration = targetAudio.duration - firstDuration;
+
+    final audio1 = targetAudio.copyWith(
+      duration: firstDuration,
+    );
+    final audio2 = targetAudio.copyWith(
+      id: _uuid.v4(),
+      title: '${targetAudio.title} (Part 2)',
+      startTime: timelinePos,
+      duration: secondDuration,
+    );
+
+    final audios = List<AudioTrackModel>.from(_activeProject!.audioTracks);
+    audios[index] = audio1;
+    audios.insert(index + 1, audio2);
+
+    _activeProject = _activeProject!.copyWith(
+      audioTracks: audios,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+    return true;
+  }
+
+  void duplicateAudioClip(String audioId) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.audioTracks.indexWhere((a) => a.id == audioId);
+    if (index < 0) return;
+
+    _pushHistory();
+    final original = _activeProject!.audioTracks[index];
+    final duplicated = original.copyWith(
+      id: _uuid.v4(),
+      title: '${original.title} (Copy)',
+      startTime: original.endTime,
+    );
+
+    final audios = List<AudioTrackModel>.from(_activeProject!.audioTracks);
+    audios.insert(index + 1, duplicated);
+
+    _activeProject = _activeProject!.copyWith(
+      audioTracks: audios,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
   // --- Multi-Track Add & Header State Management ---
   void addVideoTrack() {
     if (_activeProject == null) return;
@@ -520,6 +826,318 @@ class ProjectProvider extends ChangeNotifier {
       textOverlays: texts,
       updatedAt: DateTime.now(),
     );
+    _saveAndNotify();
+  }
+
+  void moveTextOverlay(String textId, Duration newStartTime) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.textOverlays.indexWhere((t) => t.id == textId);
+    if (index < 0) return;
+
+    final old = _activeProject!.textOverlays[index];
+    final updated = old.copyWith(startTime: newStartTime < Duration.zero ? Duration.zero : newStartTime);
+    final texts = List<TextOverlayModel>.from(_activeProject!.textOverlays);
+    texts[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(textOverlays: texts, updatedAt: DateTime.now());
+    notifyListeners();
+  }
+
+  void commitTextOverlayMove(String textId) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    _saveAndNotify();
+  }
+
+  void trimTextOverlayStart(String textId, Duration delta) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.textOverlays.indexWhere((t) => t.id == textId);
+    if (index < 0) return;
+
+    final old = _activeProject!.textOverlays[index];
+    final newDuration = old.duration - delta;
+    if (newDuration < const Duration(milliseconds: 300)) return;
+
+    final newStartTime = old.startTime + delta;
+    if (newStartTime < Duration.zero) return;
+
+    final updated = old.copyWith(
+      startTime: newStartTime,
+      duration: newDuration,
+    );
+    final texts = List<TextOverlayModel>.from(_activeProject!.textOverlays);
+    texts[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(textOverlays: texts, updatedAt: DateTime.now());
+    notifyListeners();
+  }
+
+  void trimTextOverlay(String textId, Duration newDuration) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.textOverlays.indexWhere((t) => t.id == textId);
+    if (index < 0) return;
+
+    final old = _activeProject!.textOverlays[index];
+    final safeDuration = newDuration < const Duration(milliseconds: 300) ? const Duration(milliseconds: 300) : newDuration;
+    final updated = old.copyWith(duration: safeDuration);
+    final texts = List<TextOverlayModel>.from(_activeProject!.textOverlays);
+    texts[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(textOverlays: texts, updatedAt: DateTime.now());
+    notifyListeners();
+  }
+
+  void duplicateTextOverlay(String textId) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.textOverlays.indexWhere((t) => t.id == textId);
+    if (index < 0) return;
+
+    _pushHistory();
+    final original = _activeProject!.textOverlays[index];
+    final duplicated = original.copyWith(
+      id: _uuid.v4(),
+      startTime: original.endTime,
+    );
+
+    final texts = List<TextOverlayModel>.from(_activeProject!.textOverlays);
+    texts.insert(index + 1, duplicated);
+
+    _activeProject = _activeProject!.copyWith(textOverlays: texts, updatedAt: DateTime.now());
+    _saveAndNotify();
+  }
+
+  // --- Shapes Management ---
+  void addShape(ShapeOverlayModel shape) {
+    if (_activeProject == null) return;
+    _pushHistory();
+
+    final shapes = List<ShapeOverlayModel>.from(_activeProject!.shapes)..add(shape);
+    _activeProject = _activeProject!.copyWith(
+      shapes: shapes,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void updateShape(ShapeOverlayModel updated) {
+    if (_activeProject == null) return;
+    _pushHistory();
+
+    final shapes = _activeProject!.shapes.map((s) {
+      return s.id == updated.id ? updated : s;
+    }).toList();
+
+    _activeProject = _activeProject!.copyWith(
+      shapes: shapes,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void removeShape(String id) {
+    if (_activeProject == null) return;
+    _pushHistory();
+
+    final shapes = _activeProject!.shapes.where((s) => s.id != id).toList();
+    _activeProject = _activeProject!.copyWith(
+      shapes: shapes,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void moveShape(String shapeId, Duration newStartTime) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.shapes.indexWhere((s) => s.id == shapeId);
+    if (index < 0) return;
+
+    final old = _activeProject!.shapes[index];
+    final updated = old.copyWith(startTime: newStartTime < Duration.zero ? Duration.zero : newStartTime);
+    final shapes = List<ShapeOverlayModel>.from(_activeProject!.shapes);
+    shapes[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(shapes: shapes, updatedAt: DateTime.now());
+    notifyListeners();
+  }
+
+  void commitShapeMove(String shapeId) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    _saveAndNotify();
+  }
+
+  void trimShapeStart(String shapeId, Duration delta) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.shapes.indexWhere((s) => s.id == shapeId);
+    if (index < 0) return;
+
+    final old = _activeProject!.shapes[index];
+    final newDuration = old.duration - delta;
+    if (newDuration < const Duration(milliseconds: 300)) return;
+
+    final newStartTime = old.startTime + delta;
+    if (newStartTime < Duration.zero) return;
+
+    final updated = old.copyWith(
+      startTime: newStartTime,
+      duration: newDuration,
+    );
+    final shapes = List<ShapeOverlayModel>.from(_activeProject!.shapes);
+    shapes[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(shapes: shapes, updatedAt: DateTime.now());
+    notifyListeners();
+  }
+
+  void trimShape(String shapeId, Duration newDuration) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.shapes.indexWhere((s) => s.id == shapeId);
+    if (index < 0) return;
+
+    final old = _activeProject!.shapes[index];
+    final safeDuration = newDuration < const Duration(milliseconds: 300) ? const Duration(milliseconds: 300) : newDuration;
+    final updated = old.copyWith(duration: safeDuration);
+    final shapes = List<ShapeOverlayModel>.from(_activeProject!.shapes);
+    shapes[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(shapes: shapes, updatedAt: DateTime.now());
+    notifyListeners();
+  }
+
+  void duplicateShape(String shapeId) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.shapes.indexWhere((s) => s.id == shapeId);
+    if (index < 0) return;
+
+    _pushHistory();
+    final original = _activeProject!.shapes[index];
+    final duplicated = original.copyWith(
+      id: _uuid.v4(),
+      startTime: original.endTime,
+    );
+
+    final shapes = List<ShapeOverlayModel>.from(_activeProject!.shapes);
+    shapes.insert(index + 1, duplicated);
+
+    _activeProject = _activeProject!.copyWith(shapes: shapes, updatedAt: DateTime.now());
+    _saveAndNotify();
+  }
+
+  // --- Adjustment Layer Management ---
+  void addAdjustmentLayer(AdjustmentLayerModel layer) {
+    if (_activeProject == null) return;
+    _pushHistory();
+
+    final layers = List<AdjustmentLayerModel>.from(_activeProject!.adjustmentLayers)..add(layer);
+    _activeProject = _activeProject!.copyWith(
+      adjustmentLayers: layers,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void updateAdjustmentLayer(AdjustmentLayerModel updated) {
+    if (_activeProject == null) return;
+    _pushHistory();
+
+    final layers = _activeProject!.adjustmentLayers.map((l) {
+      return l.id == updated.id ? updated : l;
+    }).toList();
+
+    _activeProject = _activeProject!.copyWith(
+      adjustmentLayers: layers,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void removeAdjustmentLayer(String id) {
+    if (_activeProject == null) return;
+    _pushHistory();
+
+    final layers = _activeProject!.adjustmentLayers.where((l) => l.id != id).toList();
+    _activeProject = _activeProject!.copyWith(
+      adjustmentLayers: layers,
+      updatedAt: DateTime.now(),
+    );
+    _saveAndNotify();
+  }
+
+  void moveAdjustmentLayer(String layerId, Duration newStartTime) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.adjustmentLayers.indexWhere((l) => l.id == layerId);
+    if (index < 0) return;
+
+    final old = _activeProject!.adjustmentLayers[index];
+    final updated = old.copyWith(startTime: newStartTime < Duration.zero ? Duration.zero : newStartTime);
+    final layers = List<AdjustmentLayerModel>.from(_activeProject!.adjustmentLayers);
+    layers[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(adjustmentLayers: layers, updatedAt: DateTime.now());
+    notifyListeners();
+  }
+
+  void commitAdjustmentLayerMove(String layerId) {
+    if (_activeProject == null) return;
+    _pushHistory();
+    _saveAndNotify();
+  }
+
+  void trimAdjustmentLayerStart(String layerId, Duration delta) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.adjustmentLayers.indexWhere((l) => l.id == layerId);
+    if (index < 0) return;
+
+    final old = _activeProject!.adjustmentLayers[index];
+    final newDuration = old.duration - delta;
+    if (newDuration < const Duration(milliseconds: 300)) return;
+
+    final newStartTime = old.startTime + delta;
+    if (newStartTime < Duration.zero) return;
+
+    final updated = old.copyWith(
+      startTime: newStartTime,
+      duration: newDuration,
+    );
+    final layers = List<AdjustmentLayerModel>.from(_activeProject!.adjustmentLayers);
+    layers[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(adjustmentLayers: layers, updatedAt: DateTime.now());
+    notifyListeners();
+  }
+
+  void trimAdjustmentLayer(String layerId, Duration newDuration) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.adjustmentLayers.indexWhere((l) => l.id == layerId);
+    if (index < 0) return;
+
+    final old = _activeProject!.adjustmentLayers[index];
+    final safeDuration = newDuration < const Duration(milliseconds: 300) ? const Duration(milliseconds: 300) : newDuration;
+    final updated = old.copyWith(duration: safeDuration);
+    final layers = List<AdjustmentLayerModel>.from(_activeProject!.adjustmentLayers);
+    layers[index] = updated;
+
+    _activeProject = _activeProject!.copyWith(adjustmentLayers: layers, updatedAt: DateTime.now());
+    notifyListeners();
+  }
+
+  void duplicateAdjustmentLayer(String layerId) {
+    if (_activeProject == null) return;
+    final index = _activeProject!.adjustmentLayers.indexWhere((l) => l.id == layerId);
+    if (index < 0) return;
+
+    _pushHistory();
+    final original = _activeProject!.adjustmentLayers[index];
+    final duplicated = original.copyWith(
+      id: _uuid.v4(),
+      title: '${original.title} (Copy)',
+      startTime: original.endTime,
+    );
+
+    final layers = List<AdjustmentLayerModel>.from(_activeProject!.adjustmentLayers);
+    layers.insert(index + 1, duplicated);
+
+    _activeProject = _activeProject!.copyWith(adjustmentLayers: layers, updatedAt: DateTime.now());
     _saveAndNotify();
   }
 

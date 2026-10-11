@@ -1,6 +1,8 @@
 import 'video_clip.dart';
 import 'text_overlay.dart';
 import 'audio_track.dart';
+import 'shape_overlay.dart';
+import 'adjustment_layer.dart';
 
 enum AspectRatioPreset {
   vertical9x16(9 / 16, '9:16', 'TikTok / Reels'),
@@ -35,6 +37,8 @@ class ProjectModel {
   final List<VideoClipModel> videoClips;
   final List<TextOverlayModel> textOverlays;
   final List<AudioTrackModel> audioTracks;
+  final List<ShapeOverlayModel> shapes;
+  final List<AdjustmentLayerModel> adjustmentLayers;
   final VideoFilterPreset globalFilter;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -56,6 +60,8 @@ class ProjectModel {
     this.videoClips = const [],
     this.textOverlays = const [],
     this.audioTracks = const [],
+    this.shapes = const [],
+    this.adjustmentLayers = const [],
     this.globalFilter = VideoFilterPreset.none,
     required this.createdAt,
     required this.updatedAt,
@@ -88,6 +94,16 @@ class ProjectModel {
         maxDuration = audio.endTime;
       }
     }
+    for (final shape in shapes) {
+      if (shape.endTime > maxDuration) {
+        maxDuration = shape.endTime;
+      }
+    }
+    for (final adj in adjustmentLayers) {
+      if (adj.endTime > maxDuration) {
+        maxDuration = adj.endTime;
+      }
+    }
 
     return maxDuration == Duration.zero ? const Duration(seconds: 5) : maxDuration;
   }
@@ -108,6 +124,8 @@ class ProjectModel {
     List<VideoClipModel>? videoClips,
     List<TextOverlayModel>? textOverlays,
     List<AudioTrackModel>? audioTracks,
+    List<ShapeOverlayModel>? shapes,
+    List<AdjustmentLayerModel>? adjustmentLayers,
     VideoFilterPreset? globalFilter,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -129,6 +147,8 @@ class ProjectModel {
       videoClips: videoClips ?? this.videoClips,
       textOverlays: textOverlays ?? this.textOverlays,
       audioTracks: audioTracks ?? this.audioTracks,
+      shapes: shapes ?? this.shapes,
+      adjustmentLayers: adjustmentLayers ?? this.adjustmentLayers,
       globalFilter: globalFilter ?? this.globalFilter,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -153,6 +173,8 @@ class ProjectModel {
       'videoClips': videoClips.map((e) => e.toJson()).toList(),
       'textOverlays': textOverlays.map((e) => e.toJson()).toList(),
       'audioTracks': audioTracks.map((e) => e.toJson()).toList(),
+      'shapes': shapes.map((e) => e.toJson()).toList(),
+      'adjustmentLayers': adjustmentLayers.map((e) => e.toJson()).toList(),
       'globalFilter': globalFilter.name,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -190,6 +212,14 @@ class ProjectModel {
           [],
       audioTracks: (json['audioTracks'] as List<dynamic>?)
               ?.map((e) => AudioTrackModel.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      shapes: (json['shapes'] as List<dynamic>?)
+              ?.map((e) => ShapeOverlayModel.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      adjustmentLayers: (json['adjustmentLayers'] as List<dynamic>?)
+              ?.map((e) => AdjustmentLayerModel.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       globalFilter: VideoFilterPreset.values.firstWhere(

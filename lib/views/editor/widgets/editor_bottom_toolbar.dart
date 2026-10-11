@@ -10,6 +10,9 @@ import 'sheets/aspect_ratio_sheet.dart';
 import 'sheets/speed_sheet.dart';
 import 'sheets/ai_captions_sheet.dart';
 import 'sheets/ai_tools_sheet.dart';
+import 'sheets/transform_sheet.dart';
+import 'sheets/shape_picker_sheet.dart';
+import 'sheets/adjustment_layer_sheet.dart';
 import '../../../../services/ai_service.dart';
 
 class EditorBottomToolbar extends StatelessWidget {
@@ -56,67 +59,86 @@ class EditorBottomToolbar extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _ToolActionButton(
-                  icon: Icons.content_cut_rounded,
-                  label: 'Split Here',
-                  onTap: () {
-                    final success = projectProvider.splitClipAtPosition(
-                      activeClip.id,
-                      playhead,
-                    );
-                    Navigator.of(ctx).pop();
-                    if (!success) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Move playhead inside the clip to split',
-                          ),
-                        ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _ToolActionButton(
+                    icon: Icons.content_cut_rounded,
+                    label: 'Split Here',
+                    onTap: () {
+                      final success = projectProvider.splitClipAtPosition(
+                        activeClip.id,
+                        playhead,
                       );
-                    }
-                  },
-                ),
-                _ToolActionButton(
-                  icon: Icons.speed_rounded,
-                  label: 'Speed',
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    SpeedSheet.show(
-                      context: context,
-                      currentSpeed: activeClip.speed,
-                      onSpeedSelected: (speed) {
-                        projectProvider.updateVideoClip(
-                          activeClip.copyWith(speed: speed),
+                      Navigator.of(ctx).pop();
+                      if (!success) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Move playhead inside the clip to split',
+                            ),
+                          ),
                         );
-                      },
-                    );
-                  },
-                ),
-                _ToolActionButton(
-                  icon: activeClip.isMuted
-                      ? Icons.volume_off_rounded
-                      : Icons.volume_up_rounded,
-                  label: activeClip.isMuted ? 'Unmute' : 'Mute Clip',
-                  onTap: () {
-                    projectProvider.updateVideoClip(
-                      activeClip.copyWith(isMuted: !activeClip.isMuted),
-                    );
-                    Navigator.of(ctx).pop();
-                  },
-                ),
-                _ToolActionButton(
-                  icon: Icons.delete_outline_rounded,
-                  label: 'Delete Clip',
-                  color: Colors.redAccent,
-                  onTap: () {
-                    projectProvider.removeVideoClip(activeClip.id);
-                    Navigator.of(ctx).pop();
-                  },
-                ),
-              ],
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  _ToolActionButton(
+                    icon: Icons.transform_rounded,
+                    label: 'Transform',
+                    color: const Color(0xFF06B6D4),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      TransformSheet.show(
+                        context: context,
+                        clip: activeClip,
+                        onSave: projectProvider.updateVideoClip,
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  _ToolActionButton(
+                    icon: Icons.speed_rounded,
+                    label: 'Speed',
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      SpeedSheet.show(
+                        context: context,
+                        currentSpeed: activeClip.speed,
+                        onSpeedSelected: (speed) {
+                          projectProvider.updateVideoClip(
+                            activeClip.copyWith(speed: speed),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  _ToolActionButton(
+                    icon: activeClip.isMuted
+                        ? Icons.volume_off_rounded
+                        : Icons.volume_up_rounded,
+                    label: activeClip.isMuted ? 'Unmute' : 'Mute Clip',
+                    onTap: () {
+                      projectProvider.updateVideoClip(
+                        activeClip.copyWith(isMuted: !activeClip.isMuted),
+                      );
+                      Navigator.of(ctx).pop();
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  _ToolActionButton(
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Delete Clip',
+                    color: Colors.redAccent,
+                    onTap: () {
+                      projectProvider.removeVideoClip(activeClip.id);
+                      Navigator.of(ctx).pop();
+                    },
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -138,135 +160,208 @@ class EditorBottomToolbar extends StatelessWidget {
           top: BorderSide(color: AppColors.editorBorder, width: 1),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          // 1. Trim
-          _ToolbarItem(
-            icon: Icons.content_cut_rounded,
-            label: 'Trim',
-            onTap: () => _handleTrimAction(
-              context,
-              projectProvider,
-              timelineProvider,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          children: [
+            // 1. Transform (Zoom, Scale, Rotate, Position)
+            _ToolbarItem(
+              icon: Icons.transform_rounded,
+              label: 'Transform',
+              onTap: () {
+                if (project == null || project.videoClips.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('No video clips to transform')),
+                  );
+                  return;
+                }
+                final playhead = timelineProvider.currentPosition;
+                final activeClip = project.videoClips.cast<dynamic>().firstWhere(
+                  (c) => playhead >= c.startTime && playhead <= c.endTime,
+                  orElse: () => project.videoClips.first,
+                );
+                TransformSheet.show(
+                  context: context,
+                  clip: activeClip,
+                  onSave: projectProvider.updateVideoClip,
+                );
+              },
             ),
-          ),
 
-          // 2. Text
-          _ToolbarItem(
-            icon: Icons.title_rounded,
-            label: 'Text',
-            onTap: () {
-              TextEditSheet.show(
-                context: context,
-                currentPosition: timelineProvider.currentPosition,
-                onSave: projectProvider.addTextOverlay,
-              );
-            },
-          ),
+            // 2. Trim & Split
+            _ToolbarItem(
+              icon: Icons.content_cut_rounded,
+              label: 'Trim',
+              onTap: () => _handleTrimAction(
+                context,
+                projectProvider,
+                timelineProvider,
+              ),
+            ),
 
-          // 3. Audio
-          _ToolbarItem(
-            icon: Icons.music_note_rounded,
-            label: 'Audio',
-            onTap: () {
-              AudioPickerSheet.show(
-                context: context,
-                currentPosition: timelineProvider.currentPosition,
-                onAudioSelected: projectProvider.addAudioTrack,
-              );
-            },
-          ),
-
-          // 4. Effects
-          _ToolbarItem(
-            icon: Icons.star_border_rounded,
-            label: 'Effects',
-            onTap: () {
-              if (project != null) {
-                FilterPickerSheet.show(
+            // 3. Shapes
+            _ToolbarItem(
+              icon: Icons.interests_rounded,
+              label: 'Shapes',
+              onTap: () {
+                ShapePickerSheet.show(
                   context: context,
-                  currentFilter: project.globalFilter,
-                  onFilterSelected: projectProvider.updateGlobalFilter,
-                );
-              }
-            },
-          ),
-
-          // 5. Captions
-          _ToolbarItem(
-            icon: Icons.closed_caption_rounded,
-            label: 'Captions',
-            onTap: () {
-              if (project != null) {
-                AiCaptionsSheet.show(
-                  context: context,
-                  project: project,
-                  onApply: (captions, style) {
-                    projectProvider.applyCustomCaptions(captions, style);
+                  currentPosition: timelineProvider.currentPosition,
+                  onShapeSelected: (shape) {
+                    projectProvider.addShape(shape);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('✨ Subtitles applied to timeline!'),
+                        content: Text('🔷 Shape added to timeline! Drag on screen to reposition.'),
                         duration: Duration(seconds: 2),
                       ),
                     );
                   },
                 );
-              }
-            },
-          ),
+              },
+            ),
 
-          // 6. AI Tools Suite
-          _ToolbarItem(
-            icon: Icons.auto_awesome_rounded,
-            label: 'AI Tools',
-            onTap: () {
-              if (project != null) {
-                AiToolsSheet.show(
-                  context: context,
-                  project: project,
-                  onSilenceCutApplied: () {
-                    final silences = AiService.detectSilenceIntervals(project);
-                    projectProvider.applySilenceCuts(silences);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('✂️ Dead air removed from clips!'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
-                  onAudioNormalized: () {
-                    projectProvider.applyAudioNormalization();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('🔊 Master audio normalized (-16 LUFS)!'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
-                  onHighlightSelected: (start, dur) {
-                    timelineProvider.seekTo(start);
-                  },
-                );
-              }
-            },
-          ),
+            // 4. Adjustment Layer (Premiere Pro style)
+            _ToolbarItem(
+              icon: Icons.tune_rounded,
+              label: 'Adj Layer',
+              onTap: () {
+                if (project != null) {
+                  AdjustmentLayerSheet.show(
+                    context: context,
+                    currentPosition: timelineProvider.currentPosition,
+                    totalProjectDuration: project.totalDuration,
+                    onSave: (layer) {
+                      projectProvider.addAdjustmentLayer(layer);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('🎚️ Adjustment Layer added! Applies effects across clips.'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  );
+                }
+              },
+            ),
 
-          // 7. More
-          _ToolbarItem(
-            icon: Icons.more_horiz_rounded,
-            label: 'More',
-            onTap: () {
-              if (project != null) {
-                AspectRatioSheet.show(
+            // 5. Text Overlay
+            _ToolbarItem(
+              icon: Icons.title_rounded,
+              label: 'Text',
+              onTap: () {
+                TextEditSheet.show(
                   context: context,
-                  currentRatio: project.aspectRatio,
-                  onRatioSelected: projectProvider.updateAspectRatio,
+                  currentPosition: timelineProvider.currentPosition,
+                  onSave: projectProvider.addTextOverlay,
                 );
-              }
-            },
-          ),
-        ],
+              },
+            ),
+
+            // 6. Audio
+            _ToolbarItem(
+              icon: Icons.music_note_rounded,
+              label: 'Audio',
+              onTap: () {
+                AudioPickerSheet.show(
+                  context: context,
+                  currentPosition: timelineProvider.currentPosition,
+                  onAudioSelected: projectProvider.addAudioTrack,
+                );
+              },
+            ),
+
+            // 7. Filter Effects
+            _ToolbarItem(
+              icon: Icons.star_border_rounded,
+              label: 'Effects',
+              onTap: () {
+                if (project != null) {
+                  FilterPickerSheet.show(
+                    context: context,
+                    currentFilter: project.globalFilter,
+                    onFilterSelected: projectProvider.updateGlobalFilter,
+                  );
+                }
+              },
+            ),
+
+            // 8. Auto Captions
+            _ToolbarItem(
+              icon: Icons.closed_caption_rounded,
+              label: 'Captions',
+              onTap: () {
+                if (project != null) {
+                  AiCaptionsSheet.show(
+                    context: context,
+                    project: project,
+                    onApply: (captions, style) {
+                      projectProvider.applyCustomCaptions(captions, style);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('✨ Subtitles applied to timeline!'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  );
+                }
+              },
+            ),
+
+            // 9. AI Tools Suite
+            _ToolbarItem(
+              icon: Icons.auto_awesome_rounded,
+              label: 'AI Tools',
+              onTap: () {
+                if (project != null) {
+                  AiToolsSheet.show(
+                    context: context,
+                    project: project,
+                    onSilenceCutApplied: () {
+                      final silences = AiService.detectSilenceIntervals(project);
+                      projectProvider.applySilenceCuts(silences);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('✂️ Dead air removed from clips!'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    onAudioNormalized: () {
+                      projectProvider.applyAudioNormalization();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('🔊 Master audio normalized (-16 LUFS)!'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    onHighlightSelected: (start, dur) {
+                      timelineProvider.seekTo(start);
+                    },
+                  );
+                }
+              },
+            ),
+
+            // 10. Aspect Ratio / Canvas
+            _ToolbarItem(
+              icon: Icons.aspect_ratio_rounded,
+              label: 'Ratio',
+              onTap: () {
+                if (project != null) {
+                  AspectRatioSheet.show(
+                    context: context,
+                    currentRatio: project.aspectRatio,
+                    onRatioSelected: projectProvider.updateAspectRatio,
+                  );
+                }
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -289,7 +384,7 @@ class _ToolbarItem extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -299,7 +394,7 @@ class _ToolbarItem extends StatelessWidget {
               label,
               style: const TextStyle(
                 color: Colors.white70,
-                fontSize: 11,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w500,
               ),
             ),

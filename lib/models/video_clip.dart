@@ -33,6 +33,12 @@ class VideoClipModel {
   final TransitionType transition;
   final String? customThumbnail;
   final int trackIndex; // 0 for V1, 1 for V2, 2 for V3...
+  final double scale; // 0.1 to 4.0 (1.0 = 100%)
+  final double rotation; // In radians (0.0 = 0 deg)
+  final double positionX; // Offset from center in canvas pixels
+  final double positionY; // Offset from center in canvas pixels
+  final bool flipHorizontal;
+  final bool flipVertical;
 
   const VideoClipModel({
     required this.id,
@@ -51,6 +57,12 @@ class VideoClipModel {
     this.transition = TransitionType.none,
     this.customThumbnail,
     this.trackIndex = 0,
+    this.scale = 1.0,
+    this.rotation = 0.0,
+    this.positionX = 0.0,
+    this.positionY = 0.0,
+    this.flipHorizontal = false,
+    this.flipVertical = false,
   });
 
   Duration get endTime => startTime + duration;
@@ -72,6 +84,12 @@ class VideoClipModel {
     TransitionType? transition,
     String? customThumbnail,
     int? trackIndex,
+    double? scale,
+    double? rotation,
+    double? positionX,
+    double? positionY,
+    bool? flipHorizontal,
+    bool? flipVertical,
   }) {
     return VideoClipModel(
       id: id ?? this.id,
@@ -90,6 +108,12 @@ class VideoClipModel {
       transition: transition ?? this.transition,
       customThumbnail: customThumbnail ?? this.customThumbnail,
       trackIndex: trackIndex ?? this.trackIndex,
+      scale: scale ?? this.scale,
+      rotation: rotation ?? this.rotation,
+      positionX: positionX ?? this.positionX,
+      positionY: positionY ?? this.positionY,
+      flipHorizontal: flipHorizontal ?? this.flipHorizontal,
+      flipVertical: flipVertical ?? this.flipVertical,
     );
   }
 
@@ -111,6 +135,12 @@ class VideoClipModel {
       'transition': transition.name,
       'customThumbnail': customThumbnail,
       'trackIndex': trackIndex,
+      'scale': scale,
+      'rotation': rotation,
+      'positionX': positionX,
+      'positionY': positionY,
+      'flipHorizontal': flipHorizontal,
+      'flipVertical': flipVertical,
     };
   }
 
@@ -138,6 +168,12 @@ class VideoClipModel {
       ),
       customThumbnail: json['customThumbnail'] as String?,
       trackIndex: json['trackIndex'] as int? ?? 0,
+      scale: (json['scale'] as num?)?.toDouble() ?? 1.0,
+      rotation: (json['rotation'] as num?)?.toDouble() ?? 0.0,
+      positionX: (json['positionX'] as num?)?.toDouble() ?? 0.0,
+      positionY: (json['positionY'] as num?)?.toDouble() ?? 0.0,
+      flipHorizontal: json['flipHorizontal'] as bool? ?? false,
+      flipVertical: json['flipVertical'] as bool? ?? false,
     );
   }
 }

@@ -4,6 +4,8 @@ import 'package:edit_sathi/models/project.dart';
 import 'package:edit_sathi/models/video_clip.dart';
 import 'package:edit_sathi/models/text_overlay.dart';
 import 'package:edit_sathi/models/audio_track.dart';
+import 'package:edit_sathi/models/shape_overlay.dart';
+import 'package:edit_sathi/models/adjustment_layer.dart';
 import 'package:edit_sathi/providers/timeline_provider.dart';
 import 'package:edit_sathi/providers/project_provider.dart';
 import 'package:edit_sathi/services/export_service.dart';
@@ -342,6 +344,278 @@ void main() {
       expect(timeline.zoomLevel, initialZoom + 0.25);
       timeline.zoomOut();
       expect(timeline.zoomLevel, initialZoom);
+    });
+
+    test('VideoClipModel transform properties and ProjectProvider transform methods work accurately', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(title: 'Transform Test');
+
+      const clip = VideoClipModel(
+        id: 'clip-t1',
+        sourcePath: 'sample.mp4',
+        title: 'Transform Clip',
+        startTime: Duration.zero,
+        duration: Duration(seconds: 10),
+        sourceDuration: Duration(seconds: 10),
+      );
+      provider.addVideoClip(clip);
+
+      // Verify default transform
+      expect(provider.activeProject!.videoClips.first.scale, 1.0);
+      expect(provider.activeProject!.videoClips.first.rotation, 0.0);
+      expect(provider.activeProject!.videoClips.first.positionX, 0.0);
+      expect(provider.activeProject!.videoClips.first.positionY, 0.0);
+      expect(provider.activeProject!.videoClips.first.flipHorizontal, isFalse);
+
+      // Apply transform update
+      provider.updateClipTransform(
+        'clip-t1',
+        scale: 1.75,
+        rotation: 0.52,
+        positionX: 0.25,
+        positionY: -0.15,
+      );
+
+      final updated = provider.activeProject!.videoClips.first;
+      expect(updated.scale, 1.75);
+      expect(updated.rotation, 0.52);
+      expect(updated.positionX, 0.25);
+      expect(updated.positionY, -0.15);
+
+      // Reset transform
+      provider.resetClipTransform('clip-t1');
+      final reset = provider.activeProject!.videoClips.first;
+      expect(reset.scale, 1.0);
+      expect(reset.rotation, 0.0);
+      expect(reset.positionX, 0.0);
+      expect(reset.positionY, 0.0);
+      expect(reset.flipHorizontal, isFalse);
+    });
+
+    test('ShapeOverlayModel creation, serialization, and ProjectProvider CRUD operations', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(title: 'Shape Test');
+
+      final shape = ShapeOverlayModel(
+        id: 'shape-1',
+        type: ShapeType.star,
+        color: 0xFFFFD700,
+        strokeColor: 0xFFFFFFFF,
+        strokeWidth: 3.0,
+        positionX: 0.1,
+        positionY: -0.2,
+        width: 120,
+        height: 120,
+        rotation: 0.15,
+        startTime: const Duration(seconds: 2),
+        duration: const Duration(seconds: 5),
+      );
+
+      // Test JSON roundtrip
+      final json = shape.toJson();
+      final fromJson = ShapeOverlayModel.fromJson(json);
+      expect(fromJson.id, 'shape-1');
+      expect(fromJson.type, ShapeType.star);
+      expect(fromJson.color, 0xFFFFD700);
+      expect(fromJson.strokeWidth, 3.0);
+      expect(fromJson.width, 120);
+      expect(fromJson.startTime, const Duration(seconds: 2));
+      expect(fromJson.duration, const Duration(seconds: 5));
+      expect(fromJson.endTime, const Duration(seconds: 7));
+
+      // Test CRUD in provider
+      provider.addShape(shape);
+      expect(provider.activeProject!.shapes.length, 1);
+
+      // Update shape
+      provider.updateShape(shape.copyWith(positionX: 0.5, strokeWidth: 4.5));
+      expect(provider.activeProject!.shapes.first.positionX, 0.5);
+      expect(provider.activeProject!.shapes.first.strokeWidth, 4.5);
+
+      // Remove shape
+      provider.removeShape('shape-1');
+      expect(provider.activeProject!.shapes.isEmpty, isTrue);
+    });
+
+    test('AdjustmentLayerModel non-destructive color grading matrix generation and CRUD operations', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(title: 'Adjustment Layer Test');
+
+      final layer = AdjustmentLayerModel(
+        id: 'adj-1',
+        title: 'Cinematic Grade',
+        filter: VideoFilterPreset.cinematic,
+        brightness: 0.1,
+        contrast: 1.25,
+        saturation: 1.3,
+        opacity: 0.9,
+        startTime: const Duration(seconds: 1),
+        duration: const Duration(seconds: 8),
+      );
+
+      // Test buildColorFilter()
+      final filter = layer.buildColorFilter();
+      expect(filter, isNotNull);
+
+      // Test JSON roundtrip
+      final json = layer.toJson();
+      final fromJson = AdjustmentLayerModel.fromJson(json);
+      expect(fromJson.id, 'adj-1');
+      expect(fromJson.title, 'Cinematic Grade');
+      expect(fromJson.filter, VideoFilterPreset.cinematic);
+      expect(fromJson.contrast, 1.25);
+      expect(fromJson.saturation, 1.3);
+      expect(fromJson.opacity, 0.9);
+      expect(fromJson.startTime, const Duration(seconds: 1));
+      expect(fromJson.duration, const Duration(seconds: 8));
+      expect(fromJson.endTime, const Duration(seconds: 9));
+
+      // Test CRUD in provider
+      provider.addAdjustmentLayer(layer);
+      expect(provider.activeProject!.adjustmentLayers.length, 1);
+
+      // Update adjustment layer
+      provider.updateAdjustmentLayer(layer.copyWith(brightness: -0.2, title: 'Moody Noir'));
+      expect(provider.activeProject!.adjustmentLayers.first.brightness, -0.2);
+      expect(provider.activeProject!.adjustmentLayers.first.title, 'Moody Noir');
+
+      // Remove adjustment layer
+      provider.removeAdjustmentLayer('adj-1');
+      expect(provider.activeProject!.adjustmentLayers.isEmpty, isTrue);
+    });
+
+    test('CapCut/VN timeline clip moving, in/out trimming, duplication, and splitting across all media types', () {
+      final provider = ProjectProvider();
+      provider.createNewProject(title: 'Interactive Timeline Gestures Test');
+
+      // 1. Video Clip Move & Trim
+      provider.addVideoClip(
+        const VideoClipModel(
+          id: 'v-touch-1',
+          sourcePath: '/storage/vid.mp4',
+          title: 'Scene A',
+          startTime: Duration.zero,
+          duration: Duration(seconds: 10),
+          sourceDuration: Duration(seconds: 20),
+        ),
+      );
+
+      // Move video clip along timeline
+      provider.moveVideoClip('v-touch-1', const Duration(seconds: 4));
+      provider.commitVideoClipMove('v-touch-1');
+      expect(provider.activeProject!.videoClips.first.startTime, const Duration(seconds: 4));
+
+      // Trim video clip in-point (start)
+      provider.trimVideoClipStart('v-touch-1', const Duration(seconds: 2));
+      final trimmedVid = provider.activeProject!.videoClips.first;
+      expect(trimmedVid.startTime, const Duration(seconds: 6));
+      expect(trimmedVid.duration, const Duration(seconds: 8));
+      expect(trimmedVid.trimStart, const Duration(seconds: 2));
+
+      // Trim video clip out-point (end)
+      provider.trimVideoClipEnd('v-touch-1', const Duration(seconds: 5));
+      expect(provider.activeProject!.videoClips.first.duration, const Duration(seconds: 5));
+
+      // Duplicate video clip
+      provider.duplicateVideoClip('v-touch-1');
+      expect(provider.activeProject!.videoClips.length, 2);
+      expect(provider.activeProject!.videoClips[1].startTime, provider.activeProject!.videoClips[0].endTime);
+
+      // 2. Audio Clip Move, Trim & Split
+      provider.addAudioTrack(
+        const AudioTrackModel(
+          id: 'a-touch-1',
+          sourcePath: '/storage/audio.mp3',
+          title: 'BGM',
+          startTime: Duration.zero,
+          duration: Duration(seconds: 12),
+        ),
+      );
+
+      // Move audio clip
+      provider.moveAudioClip('a-touch-1', const Duration(seconds: 3));
+      provider.commitAudioClipMove('a-touch-1');
+      expect(provider.activeProject!.audioTracks.first.startTime, const Duration(seconds: 3));
+
+      // Trim audio start
+      provider.trimAudioClipStart('a-touch-1', const Duration(seconds: 1));
+      expect(provider.activeProject!.audioTracks.first.startTime, const Duration(seconds: 4));
+      expect(provider.activeProject!.audioTracks.first.duration, const Duration(seconds: 11));
+
+      // Trim audio end
+      provider.trimAudioClip('a-touch-1', const Duration(seconds: 6));
+      expect(provider.activeProject!.audioTracks.first.duration, const Duration(seconds: 6));
+
+      // Split audio clip at position
+      final audioSplit = provider.splitAudioClipAtPosition('a-touch-1', const Duration(seconds: 7));
+      expect(audioSplit, isTrue);
+      expect(provider.activeProject!.audioTracks.length, 2);
+      expect(provider.activeProject!.audioTracks[0].duration, const Duration(seconds: 3));
+      expect(provider.activeProject!.audioTracks[1].startTime, const Duration(seconds: 7));
+      expect(provider.activeProject!.audioTracks[1].duration, const Duration(seconds: 3));
+
+      // 3. Text Overlay Move, Trim & Duplicate
+      provider.addTextOverlay(
+        const TextOverlayModel(
+          id: 't-touch-1',
+          text: 'Title Intro',
+          startTime: Duration.zero,
+          duration: Duration(seconds: 5),
+        ),
+      );
+
+      provider.moveTextOverlay('t-touch-1', const Duration(seconds: 2));
+      provider.commitTextOverlayMove('t-touch-1');
+      expect(provider.activeProject!.textOverlays.first.startTime, const Duration(seconds: 2));
+
+      provider.trimTextOverlayStart('t-touch-1', const Duration(seconds: 1));
+      expect(provider.activeProject!.textOverlays.first.startTime, const Duration(seconds: 3));
+      expect(provider.activeProject!.textOverlays.first.duration, const Duration(seconds: 4));
+
+      provider.duplicateTextOverlay('t-touch-1');
+      expect(provider.activeProject!.textOverlays.length, 2);
+
+      // 4. Shape Overlay Move, Trim & Duplicate
+      provider.addShape(
+        const ShapeOverlayModel(
+          id: 's-touch-1',
+          type: ShapeType.star,
+          startTime: Duration.zero,
+          duration: Duration(seconds: 4),
+        ),
+      );
+
+      provider.moveShape('s-touch-1', const Duration(seconds: 3));
+      provider.commitShapeMove('s-touch-1');
+      expect(provider.activeProject!.shapes.first.startTime, const Duration(seconds: 3));
+
+      provider.trimShapeStart('s-touch-1', const Duration(seconds: 1));
+      expect(provider.activeProject!.shapes.first.startTime, const Duration(seconds: 4));
+      expect(provider.activeProject!.shapes.first.duration, const Duration(seconds: 3));
+
+      provider.duplicateShape('s-touch-1');
+      expect(provider.activeProject!.shapes.length, 2);
+
+      // 5. Adjustment Layer Move, Trim & Duplicate
+      provider.addAdjustmentLayer(
+        const AdjustmentLayerModel(
+          id: 'adj-touch-1',
+          title: 'Color Filter',
+          startTime: Duration.zero,
+          duration: Duration(seconds: 6),
+        ),
+      );
+
+      provider.moveAdjustmentLayer('adj-touch-1', const Duration(seconds: 2));
+      provider.commitAdjustmentLayerMove('adj-touch-1');
+      expect(provider.activeProject!.adjustmentLayers.first.startTime, const Duration(seconds: 2));
+
+      provider.trimAdjustmentLayerStart('adj-touch-1', const Duration(seconds: 1));
+      expect(provider.activeProject!.adjustmentLayers.first.startTime, const Duration(seconds: 3));
+      expect(provider.activeProject!.adjustmentLayers.first.duration, const Duration(seconds: 5));
+
+      provider.duplicateAdjustmentLayer('adj-touch-1');
+      expect(provider.activeProject!.adjustmentLayers.length, 2);
     });
   });
 }

@@ -78,7 +78,7 @@ jobs:
             exit 1
           fi
 
-          cp "$APK_PATH" release-output/Edit-Sathi-v1.0.2.apk
+          cp "$APK_PATH" release-output/Edit-Sathi-v1.0.3.apk
           cp "$APK_PATH" release-output/Edit-Sathi-release.apk
           echo "APKs successfully prepared:"
           ls -lh release-output/
@@ -86,50 +86,49 @@ jobs:
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Edit-Sathi-v1.0.2-APK
-          path: release-output/Edit-Sathi-v1.0.2.apk
+          name: Edit-Sathi-v1.0.3-APK
+          path: release-output/Edit-Sathi-v1.0.3.apk
           retention-days: 30
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         with:
-          tag_name: v1.0.2
-          name: "Edit Sathi v1.0.2 - Premiere Pro Multi-Track & Lag-Free Playback"
+          tag_name: v1.0.3
+          name: "Edit Sathi v1.0.3 - Touch Transformation, Shapes & Adjustment Layers"
           body: |
-            ## 🎬 Edit Sathi - Video Editing Application (Android APK v1.0.2)
+            ## 🎬 Edit Sathi - Video Editing Application (Android APK v1.0.3)
 
-            ### 🚀 What's New in v1.0.2
-            - **⚡ 100% Lag-Free Playback Engine**: ExoPlayer hardware decoder clock decoupled from Dart seek loops. Zero frame drops, no seek stutter, silky smooth 60fps playback.
-            - **▶️ Dedicated Transport Controls**:
-              - Prominent cyan/blue glowing Play / Pause button.
-              - Exact monospace timecode display (`00:03.12 / 00:28.00`).
-              - Quick Step `-1s` / `+1s` controls.
-              - Instant Split clip at current playhead (`✂`).
-              - Timeline Zoom In (`+`) and Zoom Out (`-`).
-              - `+ Track` shortcut button.
-            - **🎞️ Adobe Premiere Pro Style Stacked Multi-Track Timeline**:
-              - Stacked Video Tracks (`V1`, `V2`, `V3`...) with visual filmstrip frame indicators.
-              - Stacked Audio Tracks (`A1`, `A2`, `A3`...) with real-time waveform bars.
-              - Text & Subtitle track lane (`TXT`).
-            - **🎛️ Left Track Header Dock**:
-              - Track Badges (`V1`, `V2`, `TXT`, `A1`, `A2`).
-              - Eye button: Toggle track visibility / hide track.
-              - Mute button: Toggle track audio mute.
-              - Lock button: Prevent accidental edits.
-              - Direct `+` Add Clip button per track to place media directly on that lane.
-            - **↔️ Unblocked Timeline Scrolling & Extended Trailing Canvas**:
-              - Horizontal drag conflicts removed so thumb swiping scrolls the timeline naturally with fluid inertia.
-              - +400px extended blank canvas space past the last clip to easily scroll forward and place new clips.
-              - Playhead scrubbing on the interactive Time Ruler and needle knob.
-              - Smooth auto-scrolling during playback to keep playhead in view.
+            ### 🚀 What's New in v1.0.3
+            - **👌 Interactive Touch Transformations (Zoom, Rotate & Scale)**:
+              - **Touch-to-Zoom**: Pinch on the video canvas to scale clips dynamically from 20% to 500%.
+              - **Two-Finger Rotate**: Twist with two fingers to rotate video clips in real-time.
+              - **Drag-to-Pan**: Drag anywhere on screen to reposition the active video.
+              - **Cyan Transform Gizmo**: Interactive bounding box with 4 corner anchors, top rotation stalk, and floating quick controls (Scale %, Rotation °, Flip H, Flip V, Reset, and Tune).
+              - **Fine-Tune Transform Sheet**: Precise sliders for scale, rotation angle wheel, X/Y offsets, preset aspect scales (Fit, Fill, 1.25x, 1.5x, 2x), and one-tap reset.
+            - **🔷 Graphic Shape Overlays**:
+              - 8 vector shapes: Rectangle, Rounded Box, Circle, Arrow, Star, Heart, Callout Bubble, and Divider Line.
+              - Color palette, border stroke color, stroke width, opacity, corner radius, and duration controls.
+              - Draggable directly on canvas to reposition, with dedicated **SHP** timeline lane to trim and edit.
+            - **🎚️ Adobe Premiere Pro Style Adjustment Layers**:
+              - Non-destructive color grading layer that affects all clips underneath across the timeline.
+              - Real-time 5x4 color matrix engine adjusting brightness, contrast, saturation, opacity, and preset LUTs (Cinematic, Warm Sunset, Cool Blue, Retro Vintage, Black & White, Vivid Pop).
+              - Dedicated **ADJ** timeline lane and amber indicator pill on canvas for instant live adjustments.
+            - **🖐️ CapCut & VN Style Interactive Timeline**:
+              - **Touch & Drag-to-Move**: Touch any media clip on the timeline to slide and reposition horizontally with magnetic snapping to 0:00 and playhead.
+              - **Left & Right Trim Handles**: Selected clips feature tactile trim grip handles to adjust in-points and out-points interactively.
+              - **Contextual Clip Action Bar**: Pinned quick toolbar appears on selection for instant Split, Transform, Speed, Filter, Duplicate, and Delete.
+              - Universal support across Video, Audio, Text, Shapes, and Adjustment Layers.
+            - **⚡ Performance & Stability**:
+              - 100% on-device processing, zero cloud dependencies.
+              - Smooth 60fps gesture handling and Exoplayer playback sync.
 
             ### 📲 How to Install
-            1. Download `Edit-Sathi-v1.0.2.apk` below directly to your Android device.
+            1. Download `Edit-Sathi-v1.0.3.apk` below directly to your Android device.
             2. Tap the file to install (Enable *"Install from Unknown Sources"* if prompted).
             3. Open Edit Sathi and start editing!
           files: |
-            release-output/Edit-Sathi-v1.0.2.apk
+            release-output/Edit-Sathi-v1.0.3.apk
             release-output/Edit-Sathi-release.apk
           draft: false
           prerelease: false
